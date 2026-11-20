@@ -1,0 +1,133 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>店長モード</title>
+<style>
+body{margin:0;font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;background:#f8fafc;color:#0f172a;font-size:15px}
+header{background:#0f172a;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+section{background:#fff;margin:10px;padding:12px;border-radius:12px;box-shadow:0 1px 3px #0002}
+h2{font-size:16px;margin:0 0 8px}button{font-size:15px;padding:8px 12px;border-radius:8px;border:1px solid #cbd5e1;background:#fff}
+button.pri{background:#16a34a;color:#fff;border:0}button.rec{background:#ef4444;color:#fff;border:0}
+input,select,textarea{font-size:15px;padding:6px;border:1px solid #cbd5e1;border-radius:6px;max-width:100%}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid #e2e8f0;padding:4px;text-align:left;vertical-align:top}
+.tabs button{margin:2px}.hide{display:none}.muted{color:#64748b;font-size:12px}#confirm{background:#fef9c3;padding:10px;border-radius:8px;margin-top:8px}
+</style></head><body>
+<header><b>店長モード</b><span id="who"></span></header>
+<section id="login">
+  <h2>ログイン</h2><div id="authbox"></div>
+  <details style="margin-top:10px"><summary>新しい店舗を作る（運営用。このサーバーでは既定で無効：seed_demo.py で作成します）</summary>
+    店名 <input id="nname"> 店舗ID <input id="nslug" placeholder="英小文字" size="10"> 業種 <input id="ncat" size="8"> オーナーのパスワード(8文字以上) <input id="npw" type="password" size="14">
+    <button onclick="createStore()">作成</button></details>
+  <div id="lmsg" class="muted"></div>
+</section>
+<div id="app" class="hide">
+  <div class="tabs" style="margin:10px"><button onclick="tab('voice')">音声で登録</button><button onclick="tab('data')">店舗情報</button><button onclick="tab('test')">回答テスト</button><button onclick="tab('logs')">会話・未回答</button><button onclick="tab('hist')">変更履歴</button><button onclick="tab('acct')">アカウント・端末（課金）</button><button onclick="tab('usage')">利用状況・上限</button>
+    <a id="kiosk" target="_blank" style="margin-left:8px">接客画面を開く</a> <button onclick="logout()">ログアウト</button></div>
+  <section id="t-voice"><h2>話して登録・変更</h2>
+    <div class="muted">例:「うちは60分3,000円、90分4,500円。営業時間は朝5時まで」</div>
+    <button id="vrec" class="pri" onclick="voiceRec()">🎤 話す</button> または <input id="vtext" size="30" placeholder="文字でも可"> <button onclick="voiceText()">送る</button>
+    <div id="vtr" class="muted"></div>
+    <div id="confirm" class="hide"><div id="ctext"></div><div id="cwarn" style="color:#b45309;font-weight:700;margin-top:6px"></div>
+      <div id="cimp" class="hide" style="margin-top:8px;background:#fee2e2;padding:8px;border-radius:8px"><b>重要な変更です</b>（料金・営業時間・削除など）。声の「はい」だけでは保存しません。内容を確認し、パスワードを入力して承認してください。<br>
+        パスワード <input id="apw" type="password" size="14" autocomplete="current-password"> <button class="pri" onclick="approve()">承認して保存</button></div>
+      <div style="margin-top:8px"><button id="cyes" class="pri" onclick="confirmAns('はい')">はい（保存）</button> <button onclick="confirmAns('いいえ')">いいえ（取り消し）</button> <button id="crec" onclick="confirmVoice()">🎤 声で答える</button></div></div>
+    <div id="vres"></div>
+  </section>
+  <section id="t-data" class="hide"><h2>店舗情報（手入力で修正）</h2><div id="tables"></div></section>
+  <section id="t-test" class="hide"><h2>回答テスト（接客と同じ回答ロジック）</h2>
+    <input id="tq" size="34" placeholder="90分いくら？"> <button class="pri" onclick="testAsk()">質問</button><div id="tres"></div>
+    <h2 style="margin-top:12px">AIが見ている店舗データ</h2><div id="facts" class="muted"></div></section>
+  <section id="t-logs" class="hide"><h2>会話ログ</h2><div id="stats"></div><div id="convs"></div></section>
+  <section id="t-hist" class="hide"><h2>変更履歴・操作記録</h2><div id="hist"></div><h3 style="font-size:14px;margin-top:12px">操作の監査ログ（追記専用・改ざん検知つき。会話本文・パスワードは記録しません）</h3><div id="audit" class="muted"></div></section>
+  <section id="t-usage" class="hide"><h2>API利用状況・上限（費用ガード）</h2><div id="usage"></div></section>
+  <section id="t-acct" class="hide"><h2>アカウント・端末の管理（オーナー専用）</h2>
+    <div id="bill" style="background:#ecfeff;padding:8px;border-radius:8px"></div>
+    <h3 style="font-size:14px">登録コードの発行（1回だけ使える・期限付き）</h3>
+    名前メモ <input id="clabel" size="10" placeholder="例: 山田"> 有効 <select id="cttl"><option value="15">15分</option><option value="60">1時間</option><option value="1440" selected>24時間</option></select>
+    <button class="pri" onclick="issueCode()">コードを発行</button><div id="newcode"></div>
+    <h3 style="font-size:14px">登録済みアカウント（安全管理用。料金とは無関係）</h3><div id="accts"></div>
+    <h3 style="font-size:14px">発行した登録コード</h3><div id="codes"></div>
+    <h3 style="font-size:14px">操作履歴</h3><div id="aev" class="muted"></div></section>
+</div>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id); let ST = null, pending = null, opsHash = null;
+const COLS = { hours: ['weekday(0=月..6=日)', 'open', 'close', 'closed', 'note'], special_hours: ['date_from', 'date_to', 'open', 'close', 'closed', 'note'], prices: ['name', 'amount_yen', 'note', 'valid_from', 'valid_to', 'weekdays'], menu: ['name', 'price_yen', 'category', 'note'], payments: ['method'], faqs: ['topic', 'answer'] };
+const JA = { hours: '曜日別営業時間', special_hours: '臨時休業・特別営業', prices: '料金（期間限定は日付）', menu: 'メニュー', payments: '支払い方法', faqs: 'その他の案内' };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function onAuth(j) { if (j.account.role !== 'owner') { SK.post('/api/logout', {}); $('lmsg').innerHTML = `店員アカウントです。店舗情報の変更はオーナーのみ。<a href="/k/${j.store.slug}">接客画面</a>はこの端末でログイン済みなら使えます（再ログインが必要な場合あり）。`; return; } start(j.store, j.account); }
+SK.authBox($('authbox'), { onDone: onAuth });
+async function createStore() { try { await SK.post('/api/stores', { name: $('nname').value, slug: $('nslug').value.trim(), category: $('ncat').value, owner_password: $('npw').value }); $('lmsg').textContent = '作成しました。店舗IDとパスワードでログインしてください'; } catch (e) { $('lmsg').textContent = e.message; } }
+async function logout() { await SK.post('/api/logout', {}); location.reload(); }
+function start(s, acct) { ST = s; $('login').classList.add('hide'); $('app').classList.remove('hide'); $('who').textContent = s.name + ' / ' + (acct ? acct.name : ''); $('kiosk').href = '/k/' + s.slug + '?debug=1'; load(); }
+function tab(t) { ['voice', 'data', 'test', 'logs', 'hist', 'acct', 'usage'].forEach(x => $('t-' + x).classList.toggle('hide', x !== t)); if (t === 'logs' || t === 'hist') loadLogs(); if (t === 'acct') loadAccts(); if (t === 'usage') loadUsage(); }
+const ST_JA = { active: '有効', suspended: '停止中', deleted: '削除済み' }, CS_JA = { unused: '未使用', used: '使用済み', expired: '期限切れ', revoked: '無効化' };
+async function loadAccts() {
+  const d = await SK.get('/api/admin/accounts'), b = d.plan;
+  $('bill').innerHTML = `プラン <b>${b.plan}</b>（会話${b.included_minutes}分/月・店舗共通枠）<br><span class="muted">${esc(b.note)}</span>`;
+  $('accts').innerHTML = '<table><tr><th>名前</th><th>種別</th><th>状態</th><th>端末</th><th>ログイン中</th><th>最終操作</th><th>会話数</th><th>操作</th></tr>' + d.accounts.filter(a => a.status !== 'deleted').map(a => `<tr><td>${esc(a.name)}</td><td>${a.role === 'owner' ? 'オーナー' : '店員'}</td><td>${ST_JA[a.status]}${a.needs_rebind ? '（再登録待ち）' : ''}</td><td class="muted">${esc(a.device_label || (a.device_bound ? '登録済' : '—'))}</td><td>${a.online ? '●' : ''}</td><td class="muted">${a.last_seen || ''}</td><td>${a.conversations}</td><td>${a.role === 'owner' ? '' : `${a.status === 'active' ? `<button onclick="ctl(${a.id},'suspend')">停止</button>` : `<button onclick="ctl(${a.id},'resume')">再開</button>`}<button onclick="ctl(${a.id},'kick')">強制ログアウト</button><button onclick="reissue(${a.id})">再発行</button><button onclick="delAcct(${a.id})">削除（失効）</button>`}</td></tr>`).join('') + '</table>';
+  $('codes').innerHTML = '<table><tr><th>種別</th><th>メモ</th><th>状態</th><th>期限</th><th></th></tr>' + d.codes.map(c => `<tr><td>${c.kind === 'rebind' ? '再発行' : '新規'}</td><td>${esc(c.label)}</td><td>${CS_JA[c.state]}</td><td class="muted">${c.expires_at}</td><td>${c.state === 'unused' ? `<button onclick="revokeCode(${c.id})">無効化</button>` : ''}</td></tr>`).join('') + '</table><div class="muted">登録コード本体は発行時の1回しか表示されません（DBにはハッシュのみ）。</div>';
+  $('aev').innerHTML = d.events.map(e => `${e.ts_iso} #${e.account_id ?? '-'} ${e.event} ${esc(e.detail)}`).join('<br>');
+}
+function showCode(r) { $('newcode').innerHTML = `<div style="background:#fef9c3;padding:8px;border-radius:8px;margin-top:6px">登録コード <b style="font-size:24px;letter-spacing:3px">${r.code}</b>　有効期限 ${r.expires_at}（1回使うと無効）<br><span class="muted">今しか表示されません。相手に伝えたら閉じてください。相手は「新しい端末・アカウントを登録」に店舗IDとこのコードを入力します。</span></div>`; }
+async function issueCode() { try { showCode(await SK.post('/api/admin/codes', { label: $('clabel').value, ttl_min: +$('cttl').value })); loadAccts(); } catch (e) { alert(e.message); } }
+async function ctl(id, a) { try { await withReauth(() => SK.post(`/api/admin/accounts/${id}/${a}`, {})); loadAccts(); } catch (e) { alert(e.message); } }
+async function delAcct(id) { if (confirm('削除（失効）します。ログインできなくなります。')) ctl(id, 'delete'); }
+async function reissue(id) { if (confirm('旧パスワード・旧端末・ログイン中の状態を直ちに無効にして、新しい登録コードを発行します。')) { try { showCode(await withReauth(() => SK.post(`/api/admin/accounts/${id}/reissue`, {}))); loadAccts(); } catch (e) { alert(e.message); } } }
+async function revokeCode(id) { await SK.post(`/api/admin/codes/${id}/revoke`, {}); loadAccts(); }
+// 再認証（パスワード再入力）が必要な操作は、入力を求めてから自動で再実行する
+async function withReauth(fn) {
+  try { return await fn(); } catch (e) {
+    if (e.code !== 'reauth_required') throw e;
+    const pw = prompt('重要な操作です。パスワードを再入力してください（5分間有効）'); if (!pw) throw e;
+    await SK.post('/api/admin/reauth', { password: pw }); return await fn();
+  }
+}
+const LV = { L0: ['通常', '#16a34a'], L1: ['警告（80%超）', '#d97706'], L2: ['縮退中（この店舗のAI音声は停止。カード表示のみ）', '#dc2626'], L3: ['全体縮退（AI音声は利用できません）', '#dc2626'] };
+const bar = (u, unit = '') => `<div style="background:#e2e8f0;border-radius:6px;height:10px;width:220px;display:inline-block;vertical-align:middle"><div style="background:${u.pct >= 100 ? '#dc2626' : u.pct >= 80 ? '#d97706' : '#16a34a'};height:10px;border-radius:6px;width:${Math.min(100, u.pct || 0)}%"></div></div> ${u.used}${unit} / ${u.cap}${unit}（${u.pct}%）`;
+async function loadUsage() {
+  const d = await SK.get('/api/admin/usage'), lv = LV[d.level.level], t = d.today, m = d.month;
+  $('usage').innerHTML = `<div style="background:${lv[1]};color:#fff;padding:8px;border-radius:8px">状態 ${d.level.level}：${lv[0]}${d.level.until ? '／再開 ' + d.level.until : ''}${d.level.reason ? '（' + esc(d.level.reason) + '）' : ''}</div>
+  <h3 style="font-size:14px">今日（${t.resets_at} にリセット）</h3>会話数 ${bar(t.conversations)}<br>会話時間 ${bar(t.minutes, '分')}<br>API原価 ${bar(t.cost_yen, '円')}<br>音声登録の回数 ${bar(t.owner_voice)}
+  <h3 style="font-size:14px">今月（${m.resets_at} にリセット）</h3>会話数 ${m.conversations.used}件<br>会話時間 ${bar(m.minutes, '分')}<br>API原価 ${bar(m.cost_yen, '円')}
+  <h3 style="font-size:14px">その他</h3>平均応答（サーバー側）${d.avg_latency_ms ?? '—'}ms／直近のAPIエラー率 ${d.error_rate_recent ?? '—'}／今月の未回答 ${d.unanswered_this_month}件
+  <h3 style="font-size:14px">直近の警告・上限到達</h3>${d.warnings.length ? d.warnings.map(w => `${w.ts} ${esc(w.event)} ${esc(w.detail)}`).join('<br>') : '（なし）'}
+  <div class="muted" style="margin-top:8px">${esc(d.note)} 上限はプランで決まり、アカウントや端末を増やしても増えません。上限の変更は運営のみです。上限に達するとAI音声は止まり、営業時間・料金などの文字表示とスタッフ呼び出しに切り替わります（手入力の登録はいつでも可能）。</div>`;
+}
+async function load() {
+  const d = await SK.get('/api/admin/store');
+  $('facts').innerHTML = d.facts.map(f => `[${f.id}] ${esc(f.text)}`).join('<br>');
+  window.CONFLICTS = d.conflicts || [];
+  $('tables').innerHTML = Object.keys(COLS).map(t => {
+    const cols = COLS[t].map(c => c.split('(')[0]);
+    return `<h3 style="font-size:14px">${JA[t]}</h3><table><tr>${COLS[t].map(c => `<th>${c}</th>`).join('')}<th>更新日</th><th></th></tr>` +
+      d[t].map(r => `<tr>${cols.map(c => `<td><input data-t="${t}" data-id="${r.id}" data-c="${c}" value="${esc(r[c])}" size="8"></td>`).join('')}<td class="muted">${esc(r.updated_at)}</td><td><button onclick="saveRow('${t}',${r.id})">保存</button><button onclick="delRow('${t}',${r.id})">削除</button></td></tr>`).join('') +
+      `<tr>${cols.map(c => `<td><input data-t="${t}" data-id="new" data-c="${c}" size="8"></td>`).join('')}<td></td><td><button onclick="saveRow('${t}','new')">追加</button></td></tr></table>`;
+  }).join('');
+  $('tables').insertAdjacentHTML('afterbegin', CONFLICTS.length ? `<div style="background:#fee2e2;padding:8px;border-radius:8px;margin-bottom:8px"><b>登録内容に食い違いがあります（接客AIはこの項目を案内せず「スタッフにご確認ください」と答えます）</b><br>${CONFLICTS.map(esc).join('<br>')}</div>` : '');
+}
+function rowVals(t, id) { const v = {}; document.querySelectorAll(`input[data-t="${t}"][data-id="${id}"]`).forEach(i => { let x = i.value.trim(); v[i.dataset.c] = x === '' ? null : (/^(weekday|amount_yen|price_yen|closed)$/.test(i.dataset.c) ? +x : x); }); return v; }
+async function saveRow(t, id) { try { const r = await withReauth(() => SK.post('/api/admin/crud', { table: t, action: id === 'new' ? 'add' : 'update', id: id === 'new' ? null : id, values: rowVals(t, id) })); if (r.conflicts && r.conflicts.length) alert('保存しました。ただし次の食い違いがあります（接客では案内されません）:\n' + r.conflicts.join('\n')); load(); } catch (e) { alert(e.message); } }
+async function delRow(t, id) { if (!confirm('削除しますか？')) return; try { await withReauth(() => SK.post('/api/admin/crud', { table: t, action: 'delete', id })); load(); } catch (e) { alert(e.message); } }
+async function showProposal(j) {
+  $('vtr').textContent = '聞き取り: ' + j.transcript + (j.asr ? ` （認識 ${j.asr.ms}ms）` : '') + ` / 合計 ${j.total_ms}ms`;
+  $('ctext').textContent = j.confirm_text; $('vres').textContent = j.rejected.length ? '除外: ' + j.rejected.join(' / ') : '';
+  pending = j.pending_id; opsHash = j.ops_hash; $('confirm').classList.toggle('hide', !pending); $('cimp').classList.toggle('hide', !j.important); $('apw').value = '';
+  $('cwarn').textContent = (j.warnings || []).length ? '⚠ 食い違い: ' + j.warnings.join(' / ') : '';
+  if (pending) await SK.playPcmStream('/api/admin/say', { pending_id: pending });
+}
+async function voiceRec() { $('vrec').className = 'rec'; $('vrec').textContent = '聞いています（タップで終了）'; $('vrec').onclick = () => SK.stopRec(); const r = await SK.record({ maxMs: 30000, silenceMs: 1500 }); $('vrec').className = 'pri'; $('vrec').textContent = '🎤 話す'; $('vrec').onclick = voiceRec; $('vtr').textContent = '解析中…'; try { showProposal(await SK.post('/api/admin/voice', { audio_b64: r.b64, mime: r.mime })); } catch (e) { $('vtr').textContent = e.message; } }
+async function voiceText() { SK.ensureCtx(); $('vtr').textContent = '解析中…'; try { showProposal(await SK.post('/api/admin/voice', { text: $('vtext').value })); } catch (e) { $('vtr').textContent = e.message; } }
+async function finish(j) { $('vres').textContent = `${j.message}` + (j.transcript ? `（返答: ${j.transcript}）` : ''); if (j.result !== 'reask' && j.result !== 'needs_screen_approval') { $('confirm').classList.add('hide'); pending = null; load(); } await SK.playPcmStream('/api/admin/say', { fixed: j.message }).catch(() => {}); }
+async function approve() { if (!pending) return; try { finish(await SK.post('/api/admin/approve', { pending_id: pending, ops_hash: opsHash, password: $('apw').value })); } catch (e) { $('vres').textContent = e.message; } }
+async function confirmAns(t) { if (!pending) return; finish(await SK.post('/api/admin/confirm', { pending_id: pending, text: t })); }
+async function confirmVoice() { const r = await SK.record({ maxMs: 6000 }); finish(await SK.post('/api/admin/confirm', { pending_id: pending, audio_b64: r.b64, mime: r.mime })); }
+async function testAsk() { const j = await SK.post('/api/admin/test_ask', { text: $('tq').value }); if (j.degraded) { $('tres').innerHTML = `<b>縮退中：${esc(j.message)}</b>`; return; }
+  $('tres').innerHTML = `<b>${esc(j.answer)}</b> <span class="muted">${j.status} ${esc(j.reason)} 根拠:${j.fact_ids.join(',')} LLM ${j.timings.llm_ms}ms $${j.cost_usd.toFixed(6)}</span>`; }
+async function loadLogs() {
+  const d = await SK.get('/api/admin/logs');
+  $('stats').innerHTML = `接客 ${d.stats.n || 0}件 / 未回答 ${d.stats.unanswered || 0}件 / API原価 $${(d.stats.cost || 0).toFixed(5)} / スタッフ呼び出し ${d.stats.staff_calls || 0}件`;
+  $('convs').innerHTML = '<table><tr><th>日時</th><th>種別</th><th>未回答の質問（個人情報除去済・30日で自動消去）</th><th>状態</th><th>遅延</th></tr>' + d.conversations.map(c => { const t = JSON.parse(c.timings_json || '{}'); return `<tr style="${c.status.startsWith('answered') ? '' : 'background:#fee2e2'}"><td>${c.ts}</td><td>${c.mode}</td><td>${esc(c.question)}</td><td>${esc(c.status)}</td><td>${t.first_audio_ms || t.server_ask_ms || ''}ms</td></tr>`; }).join('') + '</table>';
+  $('hist').innerHTML = '<table><tr><th>日時</th><th>経路</th><th>操作</th><th>前</th><th>後</th></tr>' + d.history.map(h => `<tr><td>${h.ts}</td><td>${h.source}</td><td>${h.table_name} ${h.action}</td><td class="muted">${esc(h.before_json)}</td><td class="muted">${esc(h.after_json)}</td></tr>`).join('') + '</table>';
+  const a = await SK.get('/api/admin/audit'); $('audit').innerHTML = `連鎖検証: ${a.chain_ok ? '正常' : '<b style="color:#dc2626">異常（改ざんの疑い）</b>'}<br>` + a.events.map(e => `${e.ts} #${e.account_id ?? '-'} ${esc(e.event)} ${esc(e.detail)}`).join('<br>');
+}
+SK.get('/api/me').then(j => j.account.role === 'owner' && start(j.store, j.account)).catch(() => {});
+</script></body></html>

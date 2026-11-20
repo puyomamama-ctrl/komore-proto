@@ -1,0 +1,49 @@
+{
+  "_note": "公式単価（定価・Singapore/International、無料枠・キャンペーン除く）。確認日 2026-11-21 JST。qwen3.7-flash/asr/ttsは model-pricing ページで再確認済",
+  "usd_jpy": 159.75,
+  "_usd_jpy_note": "open.er-api.com 2026-11-20更新値（docs/VOICE_AI_COST_COMPARISON.mdと同じ）",
+  "qwen3.7-flash": {
+    "in_per_m": 0.03,
+    "out_per_m": 0.13,
+    "src": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+    "tier": "0<Token<=32K"
+  },
+  "qwen3-asr-flash": {
+    "per_sec": 3.5e-05,
+    "src": "https://www.alibabacloud.com/help/en/model-studio/qwen3-asr-flash"
+  },
+  "qwen3-tts-flash": {
+    "per_10k_chars": 0.1,
+    "src": "https://www.alibabacloud.com/help/en/model-studio/qwen3-tts-flash",
+    "note": "usage.characters で課金。実測で日本語（漢字・かな）は1文字=2カウント"
+  },
+  "gemini-3.5-flash-lite": {
+    "in_per_m": 0.3,
+    "out_per_m": 2.5,
+    "src": "https://ai.google.dev/gemini-api/docs/pricing"
+  },
+  "gemini-3.1-flash-live-preview": {
+    "text_in_per_m": 0.75,
+    "audio_in_per_min": 0.005,
+    "audio_out_per_min": 0.018,
+    "text_out_per_m": 4.5,
+    "src": "https://ai.google.dev/gemini-api/docs/pricing"
+  },
+  "billing": {
+    "_note": "店舗プランの前提を試作品で表現するための設定（実決済なし）。金額は【仮説】で docs/UNIT_ECONOMICS.md と同じ値。料金はアカウント数・端末台数で変わらない（2026-11-21 乃木指示でアカウント数課金を取りやめ。段階B2）",
+    "plans": {
+      "light": {
+        "base_yen": 2980,
+        "included_minutes": 150
+      },
+      "standard": {
+        "base_yen": 4980,
+        "included_minutes": 500
+      },
+      "pro": {
+        "base_yen": 9800,
+        "included_minutes": 1200
+      }
+    }
+  }
+}
