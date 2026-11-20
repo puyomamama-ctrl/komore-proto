@@ -6,4 +6,4 @@ mkdir -p data
 export SK_HOST=0.0.0.0
 export SK_PORT="${PORT:-10000}"
 python3 render_seed.py
-exec python3 server.py
+exec python3 render_server.py
