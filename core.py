@@ -27,7 +27,7 @@ def iso(dt=None):
 # ---------------- DB ----------------
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS stores(id INTEGER PRIMARY KEY, slug TEXT UNIQUE NOT NULL, name TEXT NOT NULL, category TEXT,
-  plan TEXT DEFAULT 'light', created_at TEXT, updated_at TEXT);
+  plan TEXT DEFAULT 'light', theme TEXT DEFAULT 'sakura', created_at TEXT, updated_at TEXT);
 CREATE TABLE IF NOT EXISTS accounts(id INTEGER PRIMARY KEY, store_id INT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','staff')),
   pw_salt TEXT NOT NULL, pw_hash TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','suspended','deleted')),
   needs_rebind INT DEFAULT 0, device_hash TEXT, device_label TEXT, created_at TEXT, updated_at TEXT, deleted_at TEXT);
@@ -135,6 +135,7 @@ def init_db():
             if col not in _cols(c, 'conversations'): c.execute(f'ALTER TABLE conversations ADD COLUMN {col} {ddl}')
         for col, ddl in (('kind', "TEXT DEFAULT 'voice'"), ('ref', 'INT'), ('expires_at', 'REAL'), ('effective_from', 'TEXT'), ('diff_json', 'TEXT')):
             if col not in _cols(c, 'pending'): c.execute(f'ALTER TABLE pending ADD COLUMN {col} {ddl}')
+        if 'theme' not in _cols(c, 'stores'): c.execute("ALTER TABLE stores ADD COLUMN theme TEXT DEFAULT 'sakura'")
 
 def _pw_hash(pw, salt):
     return hashlib.pbkdf2_hmac('sha256', pw.encode(), bytes.fromhex(salt), 200_000).hex()
@@ -144,6 +145,22 @@ def store_by_slug(slug):
         r = c.execute('SELECT * FROM stores WHERE slug=?', (slug,)).fetchone()
         return dict(r) if r else None
 
+THEMES = ('sakura', 'mint', 'dark')
+THEME_DEFAULT = 'sakura'
+
+def norm_theme(v):
+    t = (v or '').strip().lower()
+    return t if t in THEMES else THEME_DEFAULT
+
+def set_store_theme(store_id, theme):
+    """店ごとの画面テーマ。未指定・不明は桜ミルクティー。"""
+    if (theme or '').strip().lower() not in THEMES:
+        raise ValueError('unknown theme')
+    t = norm_theme(theme)
+    with db() as c:
+        c.execute('UPDATE stores SET theme=?, updated_at=? WHERE id=?', (t, iso(), store_id))
+    return t
+
 def store_data(store_id, c=None):
     """店舗の全データ。c を渡さなければ読み取り専用接続で読む。store_id でのWHERE以外の経路はない。"""
     out = {}
@@ -151,7 +168,7 @@ def store_data(store_id, c=None):
     if own:
         c = db_ro()
     try:
-        s = c.execute('SELECT id,slug,name,category,created_at,updated_at FROM stores WHERE id=?', (store_id,)).fetchone()
+        s = c.execute('SELECT id,slug,name,category,theme,created_at,updated_at FROM stores WHERE id=?', (store_id,)).fetchone()
         out['store'] = dict(s) if s else None
         for t in TABLES:
             out[t] = [dict(r) for r in c.execute(f'SELECT * FROM {t} WHERE store_id=? ORDER BY id', (store_id,))]

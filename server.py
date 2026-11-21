@@ -129,7 +129,7 @@ class H(BaseHTTPRequestHandler):
         if m:
             s = core.store_by_slug(m.group(1))
             if not s: return self._send(404, {'error': 'no store'})
-            return self._send(200, {'name': s['name'], 'slug': s['slug']})
+            return self._send(200, {'name': s['name'], 'slug': s['slug'], 'theme': core.norm_theme(s.get('theme'))})
         m = re.fullmatch(r'/api/k/([a-z0-9-]+)/status', p)   # 接客端末：縮退状態（セッション必須）
         if m:
             s = core.store_by_slug(m.group(1)); a = self._acct()
@@ -287,6 +287,12 @@ class H(BaseHTTPRequestHandler):
         if not owner:
             return self._send(401, {'error': 'login required'})
         sid = owner['store_id']
+        if p == '/api/admin/theme':   # 店ごとの画面テーマ（見た目のみ。接客ロジックは変えない）
+            try:
+                theme = core.set_store_theme(sid, body.get('theme'))
+            except ValueError:
+                return self._send(400, {'error': 'unknown theme'})
+            return self._send(200, {'ok': True, 'theme': theme})
         if p == '/api/admin/reauth':   # 重要変更の前のパスワード再入力
             until = A.reauth(owner, body.get('password'), ip=self._ip())
             return self._send(200, {'ok': True, 'reauth_seconds': A.REAUTH_TTL})

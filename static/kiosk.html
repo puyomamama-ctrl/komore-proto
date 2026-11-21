@@ -1,29 +1,29 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<!doctype html><html lang="ja" data-theme="sakura"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>AI受付</title>
-<style>
-body{margin:0;font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;background:#0f172a;color:#f8fafc;height:100vh;display:flex;flex-direction:column}
-header{padding:14px 18px;font-size:20px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
-#staff{background:#334155;color:#fff;border:0;border-radius:10px;padding:10px 14px;font-size:15px}
-main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:18px;text-align:center}
-#mic{width:190px;height:190px;border-radius:50%;border:0;background:#22c55e;color:#04210f;font-size:22px;font-weight:800;box-shadow:0 0 0 0 rgba(34,197,94,.6)}
-#mic.rec{background:#ef4444;color:#fff;animation:p 1s infinite}#mic.busy{background:#f59e0b}#mic.speak{background:#38bdf8;color:#052}
-@keyframes p{0%{box-shadow:0 0 0 0 rgba(239,68,68,.6)}100%{box-shadow:0 0 0 30px rgba(239,68,68,0)}}
-.q{font-size:18px;color:#cbd5e1;min-height:1.4em}.a{font-size:26px;font-weight:700;line-height:1.5;min-height:1.5em}
-#standby{position:fixed;inset:0;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-size:24px}
-#standby small{font-size:15px;color:#94a3b8}.dbg{font-size:12px;color:#64748b}
-.note{font-size:12px;color:#94a3b8;padding:8px 14px}#restart{margin-top:16px;background:#22c55e;color:#04210f;border:0;border-radius:12px;padding:14px 24px;font-size:18px;font-weight:800}
-</style></head><body>
-<header><span id="name">AI受付</span><button id="staff">スタッフを呼ぶ</button></header>
-<main>
-  <div class="q" id="q"></div>
-  <div class="a" id="a">ボタンを押して話しかけてください<br><span style="font-size:16px;color:#94a3b8">Tap and ask in English, too.</span></div>
-  <button id="mic">話す</button>
-  <div class="dbg" id="dbg"></div>
+<link rel="stylesheet" href="/static/themes.css">
+<link rel="stylesheet" href="/static/layout.css">
+</head><body>
+<header class="k-header"><span class="k-name" id="name">AI受付</span><button type="button" class="k-staff" id="staff">スタッフを呼ぶ</button></header>
+<main class="k-stage">
+  <div class="k-q" id="q"></div>
+  <div class="k-aframe"><div class="k-a a" id="a">ボタンを押して話しかけてください<br><span style="font-size:16px;color:var(--muted)">Tap and ask in English, too.</span></div>
+    <div id="cards"></div>
+  </div>
 </main>
-<div id="cards" style="display:none;padding:0 16px 8px;max-height:38vh;overflow:auto;font-size:15px;line-height:1.6"></div>
-<div class="note">AIがご案内します。音声・会話の内容は保存しません（お答えできなかった質問のみ、個人情報を除いて短期間記録）。音声認識・回答作成は外部のAIサービスで処理されます。料金・時間の最終確認はスタッフへ。</div>
-<div id="authwall" style="position:fixed;inset:0;background:#0f172a;z-index:9;display:none;align-items:center;justify-content:center;padding:16px"><div style="background:#fff;color:#0f172a;padding:16px;border-radius:12px;max-width:520px"><h3 style="margin-top:0">店員ログイン（接客を始める）</h3><div id="authbox"></div></div></div>
-<div id="standby"><div id="sbname">いらっしゃいませ</div><div>画面をタップしてください</div><small>Tap to start</small></div>
+<div class="k-dock">
+  <button type="button" class="k-mic" id="mic">話す</button>
+  <div class="dbg" id="dbg"></div>
+</div>
+<div class="note k-note">AIがご案内します。音声・会話の内容は保存しません（お答えできなかった質問のみ、個人情報を除いて短期間記録）。音声認識・回答作成は外部のAIサービスで処理されます。料金・時間の最終確認はスタッフへ。</div>
+<div id="authwall"><div class="box"><h3 style="margin-top:0">店員ログイン（接客を始める）</h3><div id="authbox"></div></div></div>
+<div id="standby" class="k-standby">
+  <div class="blob"></div>
+  <div class="hi">いらっしゃいませ</div>
+  <div class="shop" id="sbname"></div>
+  <div class="tap">画面をタップしてください</div>
+  <div class="en">Tap to start</div>
+</div>
+<div id="endscreen"><div class="k-endmsg"><p id="endmsg"></p><button type="button" id="restart">最初からはじめる</button></div></div>
 <script src="/static/common.js"></script>
 <script>
 const slug = location.pathname.split('/').pop();
@@ -34,36 +34,51 @@ const IDLE_MS = +(P.get('idle') || 30000);
 let session = Math.random().toString(36).slice(2, 10);
 const $ = id => document.getElementById(id);
 let state = 'idle', idleTimer;
+function applyTheme(t) { document.documentElement.dataset.theme = (t === 'mint' || t === 'dark') ? t : 'sakura'; }
+function hideEnd() { document.body.classList.remove('k-end'); $('endscreen').style.display = 'none'; }
+function fitAnswer() {
+  const el = $('a'), box = el && el.parentElement;
+  if (!el || !box) return;
+  let size = 22;
+  el.style.fontSize = size + 'px';
+  el.style.lineHeight = '1.45';
+  while (size > 12 && el.scrollHeight > box.clientHeight - 4) { size -= 0.5; el.style.fontSize = size + 'px'; }
+}
 function needLogin() { SK.stopAudio(); $('authwall').style.display = 'flex'; SK.authBox($('authbox'), { slug, onDone: () => { $('authwall').style.display = 'none'; init(); } }); }
 function restartConv() {
+  hideEnd();
   session = Math.random().toString(36).slice(2, 10);
   $('q').textContent = ''; $('cards').style.display = 'none'; $('cards').innerHTML = '';
-  $('a').innerHTML = 'ボタンを押して話しかけてください<br><span style="font-size:16px;color:#94a3b8">Tap and ask in English, too.</span>';
+  $('a').innerHTML = 'ボタンを押して話しかけてください<br><span style="font-size:16px;color:var(--muted)">Tap and ask in English, too.</span>';
+  $('a').style.fontSize = '';
   setMic('idle'); touch();
 }
 function showDegraded(j) {
   $('q').textContent = '';
   if (j.level === 'conv_end') {
     $('cards').style.display = 'none'; $('cards').innerHTML = '';
-    $('a').innerHTML = esc(j.message || 'お時間になりました。続きはスタッフにお声がけください。') + '<br><button type="button" id="restart">最初からはじめる</button>';
+    $('endmsg').textContent = j.message || 'お時間になりました。続きはスタッフにお声がけください。';
+    document.body.classList.add('k-end');
+    $('endscreen').style.display = 'flex';
     session = Math.random().toString(36).slice(2, 10);
     $('restart').onclick = restartConv;
     setMic('idle'); touch(); return;
   }
   $('a').textContent = j.message || '現在AI音声が利用できません。スタッフにお声がけください。';
+  fitAnswer();
   const c = $('cards'); c.style.display = (j.cards || []).length ? 'block' : 'none';
   c.innerHTML = (j.cards || []).map(x => `<div style="margin-top:8px"><b>${esc(x.title)}</b><br>${x.lines.map(esc).join('<br>')}</div>`).join('');
   setMic('idle'); touch();
 }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 async function checkStatus() { try { const j = await SK.get(`/api/k/${slug}/status`); if (j.degraded) showDegraded(j); else $('cards').style.display = 'none'; } catch (e) {} }
-async function init() { try { await SK.get('/api/me'); checkStatus(); const j = await SK.get(`/api/k/${slug}/info`); $('name').textContent = j.name || 'AI受付'; $('sbname').textContent = `いらっしゃいませ ${j.name || ''}`; } catch (e) { needLogin(); } }
+async function init() { try { await SK.get('/api/me'); checkStatus(); const j = await SK.get(`/api/k/${slug}/info`); $('name').textContent = j.name || 'AI受付'; $('sbname').textContent = j.name || ''; applyTheme(j.theme); } catch (e) { needLogin(); } }
 init();
 function touch() { clearTimeout(idleTimer); idleTimer = setTimeout(toStandby, IDLE_MS); }
-function toStandby() { SK.stopAudio(); speechSynthesis.cancel(); $('q').textContent = ''; $('a').innerHTML = 'ボタンを押して話しかけてください'; $('dbg').textContent = ''; $('standby').style.display = 'flex'; setMic('idle'); }
+function toStandby() { hideEnd(); SK.stopAudio(); speechSynthesis.cancel(); $('q').textContent = ''; $('a').innerHTML = 'ボタンを押して話しかけてください'; $('a').style.fontSize = ''; $('dbg').textContent = ''; $('standby').style.display = 'flex'; setMic('idle'); }
 $('standby').onclick = () => { SK.ensureCtx(); $('standby').style.display = 'none'; touch(); };
-function setMic(s) { state = s; const m = $('mic'); m.className = { rec: 'rec', busy: 'busy', speak: 'speak' }[s] || ''; m.textContent = { idle: '話す', rec: '聞いています…\n(タップで終了)', busy: '考えています…', speak: '話しています\n(タップで割り込み)' }[s]; }
-$('staff').onclick = () => { touch(); if ($('cards').style.display === 'none') $('a').textContent = 'スタッフをお呼びしています。少々お待ちください。'; SK.post(`/api/k/${slug}/staff`, { session }).catch(needLogin); };
+function setMic(s) { state = s; const m = $('mic'); m.className = 'k-mic ' + ({ rec: 'rec', busy: 'busy', speak: 'speak' }[s] || ''); m.textContent = { idle: '話す', rec: '聞いています…\n(タップで終了)', busy: '考えています…', speak: '話しています\n(タップで割り込み)' }[s]; }
+$('staff').onclick = () => { touch(); if ($('cards').style.display === 'none') { $('a').textContent = 'スタッフをお呼びしています。少々お待ちください。'; fitAnswer(); } SK.post(`/api/k/${slug}/staff`, { session }).catch(needLogin); };
 function browserSTT() { return new Promise((res, rej) => { const R = window.SpeechRecognition || window.webkitSpeechRecognition; if (!R) return rej(new Error('このブラウザは音声認識非対応')); const r = new R(); r.lang = P.get('lang') || 'ja-JP'; r.onresult = e => res(e.results[0][0].transcript); r.onerror = e => rej(new Error(e.error)); r.onend = () => res(''); r.start(); SK.stopRec = () => r.stop(); }); }
 $('mic').onclick = async () => {
   touch();
@@ -74,12 +89,12 @@ $('mic').onclick = async () => {
   try {
     let body = { session, mode: 'kiosk' }, tEnd;
     if (STT === 'browser') { const text = await browserSTT(); tEnd = performance.now(); body.text = text; body.client_stt = true; }
-    else { const r = await SK.record(); tEnd = r.endedAt; if (!r.spoke) { setMic('idle'); $('a').textContent = '聞き取れませんでした。もう一度どうぞ。'; return; } body.audio_b64 = r.b64; body.mime = r.mime; }
+    else { const r = await SK.record(); tEnd = r.endedAt; if (!r.spoke) { setMic('idle'); $('a').textContent = '聞き取れませんでした。もう一度どうぞ。'; fitAnswer(); return; } body.audio_b64 = r.b64; body.mime = r.mime; }
     setMic('busy');
     const j = await SK.post(`/api/k/${slug}/ask`, body);
     if (j.degraded) return showDegraded(j);
     $('cards').style.display = 'none';
-    $('q').textContent = '「' + j.question + '」'; $('a').textContent = j.answer; touch();
+    $('q').textContent = '「' + j.question + '」'; $('a').textContent = j.answer; fitAnswer(); touch();
     const tText = performance.now();
     setMic('speak');
     let tFirst = null;
@@ -87,7 +102,7 @@ $('mic').onclick = async () => {
     else await SK.playPcmStream(`/api/k/${slug}/tts`, { tts_token: j.tts_token }, t => tFirst = t);
     if (P.get('debug')) $('dbg').textContent = `文字表示まで ${Math.round(tText - tEnd)}ms / 音声開始まで ${Math.round((tFirst||tText) - tEnd)}ms / ASR ${j.timings.asr_ms} LLM ${j.timings.llm_ms} / ${j.status}`;
     if (state === 'speak') setMic('idle'); touch();
-  } catch (e) { setMic('idle'); if (e.status === 401) return needLogin(); if (e.status === 429) { $('a').textContent = e.message; return; } if (e.name !== 'AbortError') $('a').textContent = 'エラー: ' + e.message; }
+  } catch (e) { setMic('idle'); if (e.status === 401) return needLogin(); if (e.status === 429) { $('a').textContent = e.message; fitAnswer(); return; } if (e.name !== 'AbortError') { $('a').textContent = 'エラー: ' + e.message; fitAnswer(); } }
 };
 document.body.addEventListener('pointerdown', touch);
 toStandby();

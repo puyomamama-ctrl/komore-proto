@@ -1,24 +1,8 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!doctype html><html lang="ja" data-theme="sakura"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>店長モード</title>
-<style>
-body{margin:0;font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;background:#f8fafc;color:#0f172a;font-size:15px}
-header{background:#0f172a;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
-section{background:#fff;margin:10px;padding:12px;border-radius:12px;box-shadow:0 1px 3px #0002}
-h2{font-size:16px;margin:0 0 8px}button{font-size:15px;padding:8px 12px;border-radius:8px;border:1px solid #cbd5e1;background:#fff}
-button.pri{background:#16a34a;color:#fff;border:0}button.rec{background:#ef4444;color:#fff;border:0}
-input,select,textarea{font-size:15px;padding:6px;border:1px solid #cbd5e1;border-radius:6px;max-width:100%}
-table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid #e2e8f0;padding:4px;text-align:left;vertical-align:top}
-.tabs button{margin:2px}
-.qtabs button{border-radius:999px;margin:2px}.qtabs button.on{background:#0f172a;color:#fff;border-color:#0f172a}
-.qg{border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin:8px 0;background:#fff}.qg.unanswered{border-left:5px solid #ef4444}.qg.review{border-left:5px solid #f59e0b}.qg.answered{border-left:5px solid #22c55e}
-.qh{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.ic{font-size:20px}.cnt{background:#f1f5f9;border-radius:999px;padding:1px 8px;font-size:12px}.ai{background:#f8fafc;border-radius:8px;padding:6px 8px;margin-top:6px;font-size:14px}
-.badge{font-size:11px;border-radius:6px;padding:1px 6px;margin-left:4px}.b-warn{background:#fef3c7;color:#92400e}.b-red{background:#fee2e2;color:#991b1b}.b-ok{background:#dcfce7;color:#166534}
-.draft{background:#eff6ff;border-radius:8px;padding:8px;margin-top:8px}.chip{border-radius:999px;margin:2px;background:#fff}
-.card{background:#fef9c3;border-radius:10px;padding:10px;margin:8px 0}.card.must{background:#fee2e2}.diff td{font-size:13px}.diff .b{color:#64748b;text-decoration:line-through}.diff .a{color:#166534;font-weight:700}
-.grow{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end}.bars{display:flex;gap:3px;align-items:flex-end;height:60px}.bars div{width:14px;background:#60a5fa;border-radius:3px 3px 0 0}.bars div.z{background:#e2e8f0;height:2px!important}
-.big{font-size:26px;font-weight:700}.hide{display:none}.muted{color:#64748b;font-size:12px}#confirm{background:#fef9c3;padding:10px;border-radius:8px;margin-top:8px}
-</style></head><body>
-<header><b>店長モード</b><span id="who"></span></header>
+<link rel="stylesheet" href="/static/themes.css">
+<link rel="stylesheet" href="/static/layout.css"></head><body>
+<header class="a-header"><b>店長モード</b><span id="who" class="who"></span></header>
 <section id="login">
   <h2>ログイン</h2><div id="authbox"></div>
   <details style="margin-top:10px"><summary>新しい店舗を作る（運営用。このサーバーでは既定で無効：seed_demo.py で作成します）</summary>
@@ -27,14 +11,15 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
   <div id="lmsg" class="muted"></div>
 </section>
 <div id="app" class="hide">
-  <div class="tabs" style="margin:10px"><button onclick="tab('q')"><b>お客様の質問</b></button><button onclick="tab('cards')"><b>確認カード</b> <span id="ncards" class="cnt">0</span></button><button onclick="tab('voice')">音声で登録</button><button onclick="tab('data')">店舗情報</button><button onclick="tab('test')">回答テスト</button><button onclick="tab('logs')">会話・未回答</button><button onclick="tab('hist')">変更履歴</button><button onclick="tab('acct')">アカウント・端末（課金）</button><button onclick="tab('usage')">利用状況・上限</button>
-    <a id="kiosk" target="_blank" style="margin-left:8px">接客画面を開く</a> <button onclick="logout()">ログアウト</button></div>
+  <div class="a-body">
   <section id="t-q"><div id="growth"></div></section>
   <section id="t-q2"><h2>お客様の質問 <span class="muted" id="qupd"></span></h2>
     <div class="muted">同じ内容の質問はまとめて件数で表示します。全部を確認する必要はありません。「未回答」と「要確認」だけ見てください（5秒ごとに自動更新）。</div>
     <div class="qtabs" style="margin:8px 0"><button data-s="unanswered" onclick="qtab('unanswered')">未回答 <span id="c-unanswered">0</span></button><button data-s="review" onclick="qtab('review')">要確認 <span id="c-review">0</span></button><button data-s="answered" onclick="qtab('answered')">回答済み <span id="c-answered">0</span></button></div>
     <div id="qhelp" class="muted"></div><div id="qlist"></div></section>
   <section id="t-cards" class="hide"><h2>確認カード（承認するまでお客様への回答には使いません）</h2>
+    <div class="pager" id="pager" style="display:none"><button type="button" class="navbtn" onclick="cardNav(-1)">前</button><span class="pos" id="cardpos">1/1</span><button type="button" class="navbtn" onclick="cardNav(1)">次</button></div>
+    <details style="margin-bottom:8px"><summary><b>カードを作る（文字・区分・写真）</b></summary>
     <div style="margin-bottom:8px">変更を伝える（例:「今日からハイボール700円」「12月1日から日曜も営業 18時〜23時」）<br>
       <input id="chg" size="34" placeholder="文字で入力、または🎤"> <button id="chgmic" onclick="stt($('chg'), this)">🎤</button> <button class="pri" onclick="sendChange()">カードを作る</button>
       <div class="muted">🎤 はブラウザ標準の音声入力（無料）です。話した内容は文字になって入力欄に入り、送る前に直せます。</div><div id="chgmsg" class="muted"></div></div>
@@ -46,6 +31,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
       <div class="muted">写真の文字をAIが読み取り、全部の項目を確認カードにします。<b>承認するまでお客様への回答には使いません。</b>営業時間・営業日・支払い方法は1件ずつ「要確認」になります。写真そのものは保存しません。</div>
       <input type="file" id="photo" accept="image/*" capture="environment"> <button class="pri" onclick="sendPhoto()">読み取ってカードを作る</button>
       <div id="photomsg" class="muted"></div></details>
+    </details>
     <div id="cardlist"></div><h3 style="font-size:14px">開始日を待っている変更</h3><div id="schedlist" class="muted"></div></section>
   <section id="t-voice" class="hide"><h2>話して登録・変更</h2>
     <div class="muted">例:「うちは60分3,000円、90分4,500円。営業時間は朝5時まで」</div>
@@ -72,6 +58,30 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
     <h3 style="font-size:14px">登録済みアカウント（安全管理用。料金とは無関係）</h3><div id="accts"></div>
     <h3 style="font-size:14px">発行した登録コード</h3><div id="codes"></div>
     <h3 style="font-size:14px">操作履歴</h3><div id="aev" class="muted"></div></section>
+  <section id="t-more" class="hide">
+    <h2>画面のテーマ</h2>
+    <div class="muted" style="margin-bottom:8px">このお店の接客画面と管理画面に使います。店ごとに保存されます（既定は桜ミルクティー）。</div>
+    <div id="theme-list"></div>
+    <div id="thememsg" class="muted"></div>
+    <div class="more-links">
+      <button type="button" onclick="tab('voice')">音声で登録</button>
+      <button type="button" onclick="tab('test')">回答テスト</button>
+      <button type="button" onclick="tab('logs')">会話・未回答</button>
+      <button type="button" onclick="tab('hist')">変更履歴</button>
+      <button type="button" onclick="tab('acct')">アカウント・端末</button>
+      <button type="button" onclick="tab('usage')">利用状況・上限</button>
+      <a id="kiosk" target="_blank">接客画面を開く</a>
+      <button type="button" onclick="logout()">ログアウト</button>
+    </div>
+  </section>
+  </div>
+  <nav class="tabbar">
+    <button type="button" class="tab on" data-t="home" onclick="tab('home')"><span class="ico">⌂</span>ホーム</button>
+    <button type="button" class="tab" data-t="cards" onclick="tab('cards')"><span class="ico">☑</span>確認<span id="ncards" class="cnt">0</span></button>
+    <button type="button" class="tab" data-t="q" onclick="tab('q')"><span class="ico">?</span>質問</button>
+    <button type="button" class="tab" data-t="data" onclick="tab('data')"><span class="ico">店</span>お店</button>
+    <button type="button" class="tab" data-t="more" onclick="tab('more')"><span class="ico">…</span>その他</button>
+  </nav>
 </div>
 <script src="/static/common.js"></script>
 <script>
@@ -83,8 +93,40 @@ function onAuth(j) { if (j.account.role !== 'owner') { SK.post('/api/logout', {}
 SK.authBox($('authbox'), { onDone: onAuth });
 async function createStore() { try { await SK.post('/api/stores', { name: $('nname').value, slug: $('nslug').value.trim(), category: $('ncat').value, owner_password: $('npw').value }); $('lmsg').textContent = '作成しました。店舗IDとパスワードでログインしてください'; } catch (e) { $('lmsg').textContent = e.message; } }
 async function logout() { await SK.post('/api/logout', {}); location.reload(); }
-function start(s, acct) { ST = s; $('login').classList.add('hide'); $('app').classList.remove('hide'); $('who').textContent = s.name + ' / ' + (acct ? acct.name : ''); $('kiosk').href = '/k/' + s.slug + '?debug=1'; load(); tab('q'); loadCardCount(); setInterval(poll, 5000); }
-function tab(t) { ['q', 'q2', 'cards', 'voice', 'data', 'test', 'logs', 'hist', 'acct', 'usage'].forEach(x => $('t-' + x).classList.toggle('hide', !(x === t || (t === 'q' && x === 'q2')))); CUR = t; if (t === 'q') loadQ(); if (t === 'cards') loadCards(); if (t === 'logs' || t === 'hist') loadLogs(); if (t === 'acct') loadAccts(); if (t === 'usage') loadUsage(); }
+function applyTheme(th) { document.documentElement.dataset.theme = (th === 'mint' || th === 'dark') ? th : 'sakura'; }
+const THEME_META = {
+  sakura: { name: '桜ミルクティー', desc: '淡い桜色とクリーム', bg: '#FFF5F2', ac: '#E07A8A' },
+  mint: { name: 'ミントクリーム', desc: 'ミントと水色のパステル', bg: '#F2FAF7', ac: '#5AA896' },
+  dark: { name: 'ダークローズ', desc: 'チャコールにローズを差し色', bg: '#141014', ac: '#E07A8A' }
+};
+function renderThemePicker(cur) {
+  cur = THEME_META[cur] ? cur : 'sakura';
+  $('theme-list').innerHTML = Object.keys(THEME_META).map(k => {
+    const m = THEME_META[k], on = k === cur;
+    return `<button type="button" class="theme-opt${on ? ' sel' : ''}" onclick="saveTheme('${k}')"><span class="swatch" style="background:${m.bg}"><span style="background:${m.ac}"></span></span><span><b>${m.name}</b><p>${m.desc}</p></span><span class="radio"></span></button>`;
+  }).join('');
+}
+async function saveTheme(k) {
+  try {
+    const r = await SK.post('/api/admin/theme', { theme: k });
+    applyTheme(r.theme); renderThemePicker(r.theme);
+    $('thememsg').textContent = '保存しました（このお店の接客画面にもすぐ反映されます）。';
+  } catch (e) { $('thememsg').textContent = e.message; }
+}
+function start(s, acct) { ST = s; $('login').classList.add('hide'); $('app').classList.remove('hide'); $('who').textContent = s.name + ' / ' + (acct ? acct.name : ''); $('kiosk').href = '/k/' + s.slug + '?debug=1'; load(); tab('home'); loadCardCount(); setInterval(poll, 5000); }
+const MAIN_OF = { home:'home', q:'q', cards:'cards', data:'data', more:'more', voice:'more', test:'more', logs:'more', hist:'more', acct:'more', usage:'more' };
+function tab(t) {
+  ['q', 'q2', 'cards', 'voice', 'data', 'test', 'logs', 'hist', 'acct', 'usage', 'more'].forEach(x => { const el = $('t-' + x); if (el) el.classList.toggle('hide', x !== t); });
+  CUR = t;
+  document.querySelectorAll('.tabbar .tab').forEach(b => b.classList.toggle('on', b.dataset.t === (MAIN_OF[t] || t)));
+  if (t === 'home') { loadGrowth(); const g = $('t-q'); if (g) g.classList.remove('hide'); }
+  if (t === 'q') loadQ();
+  if (t === 'cards') loadCards();
+  if (t === 'logs' || t === 'hist') loadLogs();
+  if (t === 'acct') loadAccts();
+  if (t === 'usage') loadUsage();
+  if (t === 'more') { renderThemePicker(document.documentElement.dataset.theme); }
+}
 const ST_JA = { active: '有効', suspended: '停止中', deleted: '削除済み' }, CS_JA = { unused: '未使用', used: '使用済み', expired: '期限切れ', revoked: '無効化' };
 async function loadAccts() {
   const d = await SK.get('/api/admin/accounts'), b = d.plan;
@@ -120,6 +162,7 @@ async function loadUsage() {
 }
 async function load() {
   const d = await SK.get('/api/admin/store');
+  applyTheme(d.store && d.store.theme);
   $('facts').innerHTML = d.facts.map(f => `[${f.id}] ${esc(f.text)}`).join('<br>');
   window.CONFLICTS = d.conflicts || [];
   $('tables').innerHTML = Object.keys(COLS).map(t => {
@@ -202,30 +245,50 @@ async function useDraft(id) { try { showCard($('cd' + id), await SK.post(`/api/a
 async function ownerAnswer(id) { const t = $('oa' + id).value.trim(); if (!t) return; $('cd' + id).innerHTML = '<div class="muted">整えています…</div>'; try { showCard($('cd' + id), await SK.post(`/api/admin/questions/${id}/answer`, { text: t })); } catch (e) { $('cd' + id).innerHTML = esc(e.message); } }
 async function qok(id) { await SK.post(`/api/admin/questions/${id}/ok`, {}); delete OPEN[id]; loadQ(); }
 // 確認カード（変更前→変更後・開始日・重要な変更はパスワード）
+function cardDiffLine(d) {
+  return `<div class="change">${esc(d.item)}　<span class="before">前：${esc(d.before == null || d.before === '' ? '（なし）' : d.before)}</span><span class="arrow">→</span><span class="after">後：${esc(d.after == null || d.after === '' ? '（なし）' : d.after)}</span></div>`;
+}
 function cardHtml(c) {
   const must = (c.must_confirm || []).length, MJ = { set_hours: '営業時間・営業日', set_special_hours: '営業日（臨時）', add_payment: '支払い方法', remove_payment: '支払い方法' };
   const KJ = { voice: '音声での変更', chat: '文字での変更', answer: '質問への回答', web: 'Webから取り込み', web_must: 'Webから取り込み（要確認）', photo: '写真から取り込み', photo_must: '写真から取り込み（要確認）' };
   const pick = (c.items || []).length > 1 ? `<details style="margin-top:6px"><summary>項目ごとに選ぶ（${c.items.length}件）</summary>${c.items.map(it => `<label style="display:block"><input type="checkbox" data-card="${c.pending_id}" value="${it.i}" checked> ${esc(it.text)}${it.src ? ' <span class="muted">出典 ' + esc(it.src) + '</span>' : ''}</label>`).join('')}<button onclick="narrowCard('${c.pending_id}')">チェックした項目だけ残す</button> <span class="muted">（残した項目は新しいカードになり、もう一度承認が必要です）</span></details>` : '';
-  return `<div class="card ${must ? 'must' : ''}" id="card-${c.pending_id}"><b>${must ? '要確認：' + [...new Set(c.must_confirm.map(m => MJ[m]))].join('・') : '確認'}</b> <span class="muted">${KJ[c.kind] || c.kind}${c.source && c.source.url ? '・出典 ' + esc(c.source.url) + '（' + esc((c.source.fetched_at || '').slice(0, 16)) + ' 取得）' : ''}</span>
-    <table class="diff" style="margin-top:6px"><tr><th>項目</th><th>変更前</th><th></th><th>変更後</th></tr>${(c.diff || []).map(d => `<tr><td>${esc(d.item)}</td><td class="b">${esc(d.before)}</td><td>→</td><td class="a">${esc(d.after)}</td></tr>`).join('') || '<tr><td colspan=4 class="muted">（変更なし）</td></tr>'}</table>
-    ${pick}<div style="margin-top:4px">反映：<b>${c.effective_from ? esc(c.effective_from) + ' から' : '承認したらすぐ（次のお客様から）'}</b></div>
-    ${c.warnings && c.warnings.length ? `<div style="color:#b45309">⚠ ${c.warnings.map(esc).join(' / ')}</div>` : ''}
-    <div style="margin-top:6px">${c.important ? `パスワード <input type="password" size="12" id="pw-${c.pending_id}" autocomplete="current-password"> ` : ''}<button class="pri" onclick="approveCard('${c.pending_id}','${c.ops_hash}')">承認して保存</button> <button onclick="rejectCard('${c.pending_id}')">取り消し</button></div>
-    ${c.important ? '<div class="muted">料金・営業時間・支払い方法などの重要な変更は、パスワードの入力が必要です。</div>' : ''}<div id="cm-${c.pending_id}"></div></div>`;
+  const title = must ? '要確認：' + [...new Set(c.must_confirm.map(m => MJ[m]))].join('・') : '確認';
+  const diffs = (c.diff || []).length ? c.diff.map(cardDiffLine).join('') : '<div class="muted">（変更なし）</div>';
+  return `<div class="card confirm ${must ? 'must' : ''}" id="card-${c.pending_id}"><span class="tag">${esc(title)}</span> <span class="muted">${KJ[c.kind] || c.kind}${c.source && c.source.url ? '・出典 ' + esc(c.source.url) + '（' + esc((c.source.fetched_at || '').slice(0, 16)) + ' 取得）' : ''}</span>
+    <h3>${esc(title)}</h3>
+    ${diffs}
+    ${pick}<div class="when">反映：<b>${c.effective_from ? esc(c.effective_from) + ' から' : '承認したらすぐ（次のお客様から）'}</b></div>
+    ${c.warnings && c.warnings.length ? `<div style="color:var(--warn-ink)">⚠ ${c.warnings.map(esc).join(' / ')}</div>` : ''}
+    ${c.important ? `<div class="muted" style="margin-bottom:8px">料金・営業時間・支払い方法などの重要な変更は、パスワードの入力が必要です。<br>パスワード <input type="password" size="12" id="pw-${c.pending_id}" autocomplete="current-password"></div>` : ''}
+    <div class="actions"><button type="button" class="btn ok" onclick="approveCard('${c.pending_id}','${c.ops_hash}')">承認</button> <button type="button" class="btn no" onclick="rejectCard('${c.pending_id}')">取り消し</button></div>
+    <div id="cm-${c.pending_id}"></div></div>`;
 }
 function showCard(el, c) { if (!c.pending_id) { el.innerHTML = `<div class="muted">登録できる内容が見つかりませんでした。${esc((c.unclear || []).join('、'))}</div>`; return; } el.innerHTML = cardHtml(c); loadCardCount(); }
 async function approveCard(pid, h) {
   const pw = $('pw-' + pid); try { const r = await SK.post('/api/admin/approve', { pending_id: pid, ops_hash: h, password: pw ? pw.value : undefined });
-    $('cm-' + pid).innerHTML = `<b style="color:#166534">${esc(r.message)}</b>`; setTimeout(() => { loadQ(); if (CUR === 'cards') loadCards(); load(); }, 900); } catch (e) { $('cm-' + pid).innerHTML = `<span style="color:#b91c1c">${esc(e.message)}</span>`; }
+    $('cm-' + pid).innerHTML = `<b style="color:var(--ok-ink)">${esc(r.message)}</b>`; setTimeout(() => { loadQ(); if (CUR === 'cards') loadCards(); load(); }, 900); } catch (e) { $('cm-' + pid).innerHTML = `<span style="color:var(--danger-ink)">${esc(e.message)}</span>`; }
 }
-async function rejectCard(pid) { await SK.post(`/api/admin/cards/${pid}/reject`, {}); const el = $('card-' + pid); if (el) el.remove(); loadCardCount(); }
+async function rejectCard(pid) { await SK.post(`/api/admin/cards/${pid}/reject`, {}); CARDS = CARDS.filter(c => String(c.pending_id) !== String(pid)); if (CARD_I >= CARDS.length) CARD_I = Math.max(0, CARDS.length - 1); renderCardPane(); loadCardCount(); }
 async function loadCardCount() { try { const d = await SK.get('/api/admin/cards'); $('ncards').textContent = d.cards.length; return d; } catch (e) {} }
+let CARDS = [], CARD_I = 0;
+function cardNav(d) { if (!CARDS.length) return; CARD_I = (CARD_I + d + CARDS.length) % CARDS.length; renderCardPane(); }
+function renderCardPane() {
+  const pg = $('pager');
+  if (!CARDS.length) { if (pg) pg.style.display = 'none'; $('cardlist').innerHTML = '<div class="muted">承認待ちのカードはありません。</div>'; return; }
+  if (CARD_I >= CARDS.length) CARD_I = CARDS.length - 1;
+  if (CARD_I < 0) CARD_I = 0;
+  if (pg) pg.style.display = 'flex';
+  $('cardpos').textContent = (CARD_I + 1) + '/' + CARDS.length;
+  $('cardlist').innerHTML = cardHtml(CARDS[CARD_I]);
+}
 async function loadCards() {
   const d = await loadCardCount(); if (!d) return;
-  $('cardlist').innerHTML = d.cards.length ? d.cards.map(cardHtml).join('') : '<div class="muted">承認待ちのカードはありません。</div>';
-  try { const st = await SK.get('/api/admin/store'); $('tiers').innerHTML = st.price_tiers.length ? '登録済み：' + st.price_tiers.map(t => `<b>${esc(t.name)}</b>（${esc(t.aliases || '')}）・区分付きの料金 ${st.prices.filter(p => p.tier === t.name).length}件`).join('／') + '<br>編集は同じ区分名で作り直すと「変更前→変更後」カードになります。削除は「店舗情報」タブから。' : '登録済みの区分はありません（二重価格のない店はこのままで大丈夫です）。'; } catch (e) {}
+  CARDS = d.cards || []; if (CARD_I >= CARDS.length) CARD_I = Math.max(0, CARDS.length - 1);
+  renderCardPane();
+  try { const st = await SK.get('/api/admin/store'); applyTheme(st.store && st.store.theme); if (CUR === 'more') renderThemePicker(document.documentElement.dataset.theme); $('tiers').innerHTML = st.price_tiers.length ? '登録済み：' + st.price_tiers.map(t => `<b>${esc(t.name)}</b>（${esc(t.aliases || '')}）・区分付きの料金 ${st.prices.filter(p => p.tier === t.name).length}件`).join('／') + '<br>編集は同じ区分名で作り直すと「変更前→変更後」カードになります。削除は「店舗情報」タブから。' : '登録済みの区分はありません（二重価格のない店はこのままで大丈夫です）。'; } catch (e) {}
   $('schedlist').innerHTML = d.scheduled.length ? d.scheduled.map(x => `${esc(x.effective_date)} から：${esc(x.summary.replace('登録内容を確認します。', '').replace(/保存してよろしいですか？/, ''))} <button onclick="cancelSched(${x.id})">予約を取り消す</button>`).join('<br>') : '（なし）';
 }
+
 async function sendPhoto() {
   const f = $('photo').files[0]; if (!f) { $('photomsg').textContent = '写真を選んでください。'; return; }
   $('photomsg').textContent = '読み取っています…（10〜20秒）';
