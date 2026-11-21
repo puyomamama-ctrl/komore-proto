@@ -55,6 +55,11 @@ def record(model, usage, purpose='', note=''):
         t = total(); t['usd'] = round(t['usd'] + usd, 7); t['jpy'] = round(t['usd'] * FX, 4); t['calls'] += 1
         t['cap_jpy'] = CAP_JPY; t['updated'] = row['ts']
         json.dump(t, open(tp, 'w'))
+    try:
+        import persist
+        persist.mark_dirty()
+    except Exception:
+        pass
     return usd
 
 def record_prior(jpy, note):
