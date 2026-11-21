@@ -67,6 +67,10 @@ def fallback_text(lang):
 
 def tts_supported(lang):
     return norm_lang(lang, '') in TTS_LANG
+
+def kiosk_tts_enabled():
+    """接客画面の読み上げ。既定は無効。KOMORE_KIOSK_TTS=1（または true/on/yes）で有効。"""
+    return os.environ.get('KOMORE_KIOSK_TTS', '').strip().lower() in ('1', 'true', 'yes', 'on')
 _lock = threading.Lock()
 TTS_MAX_CHARS = 150   # 1回の読み上げ上限（API_COST_GUARDRAILS §3-1）
 MAX_QUESTION_CHARS = 200
@@ -1140,7 +1144,7 @@ def tts_take(store_id, tok):
         return None
     return {'answer': v[1], 'lang': v[2], 'conv_id': v[3]}
 
-def record_conversation(store_id, mode, session, question, res, timings, usage, cost, account_id=None):
+def record_conversation(store_id, mode, session, question, res, timings, usage, cost, account_id=None, issue_tts=True):
     """保存方針（乃木決定① 2026-11-21）：音声は保存しない。お客様の質問文は個人情報を除いて短く保存し、90日で自動消去。
     店長画面（区切りC）で質問とAIの回答を並べるため、回答文（店舗データから作った文）も90日保存。日時・状態・種類・根拠IDも記録。
     mode=test（店長の回答テスト）は質問も回答も保存しない。"""
@@ -1155,7 +1159,7 @@ def record_conversation(store_id, mode, session, question, res, timings, usage, 
         c.execute('UPDATE conversations SET category=? WHERE id=?', (cat, cid))
         if keep_q and mode == 'kiosk' and question.strip() and res.get('reason') != 'clarify':
             assign_group(c, store_id, cid, mask_pii(question), cat)
-    return cid, tts_put(store_id, res['answer'], res['lang'], cid)
+    return cid, (tts_put(store_id, res['answer'], res['lang'], cid) if issue_tts else None)
 
 PII_CUE = re.compile(r'(名前|住所|電話|携帯|メール|カード番号|暗証|パスワード|生年月日|マイナンバー|口座)')
 def mask_pii(t):

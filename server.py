@@ -248,23 +248,28 @@ class H(BaseHTTPRequestHandler):
         timings['server_ask_ms'] = round((time.time() - t0) * 1000)
         mode = body.get('mode') if body.get('mode') in ('kiosk', 'test', 'eval') else 'kiosk'
         if kind == 'test': mode = 'test'
-        cid, tok = core.record_conversation(sid, mode, session, res.get('log_question') or q, res, timings, usage, cost, (acct or {}).get('id'))
+        speak = core.kiosk_tts_enabled() and core.tts_supported(res['lang'])
+        cid, tok = core.record_conversation(sid, mode, session, res.get('log_question') or q, res, timings, usage, cost, (acct or {}).get('id'), issue_tts=speak)
         if mode == 'kiosk' and res['status'] == 'answered' and os.environ.get('SK_AUDIT', '1') == '1':
             # 別AIチェック：回答後に裏で実行（お客様への回答は待たせない・止めない）。怪しいものは店長画面の「要確認」へ
             threading.Thread(target=core.audit_conversation, args=(sid, cid, q, res['answer']), daemon=True).start()
         yen = cost * guard.fx()
-        guard.end_turn(tk, actual_yen=yen + guard.tts_est_yen(len(res['answer'])), actual_sec=usage.get('asr_sec', 0) + len(res['answer']) / 5,
+        # 読み上げが無効のときは見積も予約も入れない（APIも呼ばない）
+        guard.end_turn(tk, actual_yen=yen + (guard.tts_est_yen(len(res['answer'])) if speak else 0),
+                       actual_sec=usage.get('asr_sec', 0) + (len(res['answer']) / 5 if speak else 0),
                        error=err, question=q, status=res['status'] + ':' + res['reason'])
         out = {'conv_id': cid, 'tts_token': tok, 'question': q, 'answer': res['answer'], 'status': res['status'],
                'reason': res['reason'], 'lang': res['lang'], 'fact_ids': res['fact_ids'], 'timings': timings, 'cost_usd': cost,
                'staff_call': res['status'] != 'answered', 'clarify': res.get('reason') == 'clarify',
-               'tts': core.tts_supported(res['lang'])}   # 読み上げ非対応の言語は文字だけで表示
+               'tts': speak}   # 既定は無効。有効かつ対応言語のときだけ読み上げ
         if audio:
             out['stt'] = {'model': (usage.get('asr_model') or ''), 'ms': timings.get('asr_ms')}
         return self._send(200, out)
 
     def _tts(self, store_id, body):
         """サーバーが作った文だけ読み上げる（tts_token必須・1回限り・30秒で失効）。24kHz s16le をチャンク転送。"""
+        if not core.kiosk_tts_enabled():
+            return self._send(403, {'error': 'tts disabled'})
         r = core.tts_take(store_id, body.get('tts_token'))
         if not r:
             return self._send(403, {'error': 'bad token'})

@@ -28,7 +28,7 @@
 <script>
 const slug = location.pathname.split('/').pop();
 const P = new URLSearchParams(location.search);
-const TTS = P.get('tts') || 'server';          // server(Qwen TTS) | local(端末内蔵の声・無料)
+const TTS = P.get('tts') || 'server';          // server(Qwen TTS) | local(端末内蔵の声)。実際に鳴らすかはサーバーの tts フラグ（既定は無効）
 const STT = P.get('stt') || 'server';          // server(Qwen ASR) | browser(Web Speech API)
 const IDLE_MS = +(P.get('idle') || 30000);
 let session = Math.random().toString(36).slice(2, 10);
@@ -96,15 +96,17 @@ $('mic').onclick = async () => {
     $('cards').style.display = 'none';
     $('q').textContent = '「' + j.question + '」'; $('a').textContent = j.answer; fitAnswer(); touch();
     const tText = performance.now();
-    setMic('speak');
     let tFirst = null;
-    if (TTS === 'local') { tFirst = performance.now(); await SK.speakLocal(j.answer, j.lang); }
-    else if (j.tts !== false) {   // 読み上げ非対応の言語は文字だけ
-      try { await SK.playPcmStream(`/api/k/${slug}/tts`, { tts_token: j.tts_token }, t => tFirst = t); }
-      catch (e) { if (e.name === 'AbortError') throw e; tFirst = performance.now(); await SK.speakLocal(j.answer, j.lang).catch(() => {}); }   // 読み上げAPIが使えない時は端末の声で
+    if (j.tts === true) {   // サーバーが読み上げを有効にしているときだけ（既定は文字だけ）
+      setMic('speak');
+      if (TTS === 'local') { tFirst = performance.now(); await SK.speakLocal(j.answer, j.lang); }
+      else {
+        try { await SK.playPcmStream(`/api/k/${slug}/tts`, { tts_token: j.tts_token }, t => tFirst = t); }
+        catch (e) { if (e.name === 'AbortError') throw e; tFirst = performance.now(); await SK.speakLocal(j.answer, j.lang).catch(() => {}); }
+      }
     }
     if (P.get('debug')) $('dbg').textContent = `文字表示まで ${Math.round(tText - tEnd)}ms / 音声開始まで ${Math.round((tFirst||tText) - tEnd)}ms / ASR ${j.timings.asr_ms} LLM ${j.timings.llm_ms} / ${j.status}`;
-    if (state === 'speak') setMic('idle'); touch();
+    if (state === 'speak' || state === 'busy') setMic('idle'); touch();
   } catch (e) { setMic('idle'); if (e.status === 401) return needLogin(); if (e.status === 429) { $('a').textContent = e.message; fitAnswer(); return; } if (e.name !== 'AbortError') { $('a').textContent = 'エラー: ' + e.message; fitAnswer(); } }
 };
 document.body.addEventListener('pointerdown', touch);
