@@ -5,7 +5,7 @@
 """
 import base64, io, json, os, re, sqlite3, sys, threading, time, urllib.parse, wave
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-import core, audit, guard, photo_import, web_import, persist
+import core, audit, guard, photo_import, web_import
 import accounts as A
 
 HOST = os.environ.get('SK_HOST', '127.0.0.1')
@@ -38,9 +38,6 @@ class H(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(b)
-        if self.command == 'POST' and 200 <= code < 300:
-            try: persist.mark_dirty()
-            except Exception: pass
 
     def _json(self):
         n = int(self.headers.get('Content-Length') or 0)
@@ -293,12 +290,6 @@ class H(BaseHTTPRequestHandler):
         if not owner:
             return self._send(401, {'error': 'login required'})
         sid = owner['store_id']
-        if p == '/api/admin/persist_now':   # 店データ一式を専用Supabaseへ今すぐ保存（接続情報は返さない）
-            try:
-                r = persist.save()
-                return self._send(200, {'ok': True, 'saved': not r.get('skipped'), 'bytes': r.get('bytes')})
-            except Exception:
-                return self._send(500, {'error': 'persist failed'})
         if p == '/api/admin/theme':   # 店ごとの画面テーマ（見た目のみ。接客ロジックは変えない）
             try:
                 theme = core.set_store_theme(sid, body.get('theme'))
@@ -473,13 +464,12 @@ def serve(host=HOST, port=PORT):
         k = 0
         while True:
             time.sleep(60); k += 1
-            try: core.apply_due_scheduled(); persist.mark_dirty()   # 開始日が来た変更予約を反映（1分ごと）
+            try: core.apply_due_scheduled()   # 開始日が来た変更予約を反映（1分ごと）
             except Exception as e: sys.stderr.write(f'schedule error {type(e).__name__}\n')
             if k % 60 == 0:
                 try: core.purge()
                 except Exception as e: sys.stderr.write(f'purge error {type(e).__name__}\n')
     threading.Thread(target=loop, daemon=True).start()
-    persist.start_worker()
     return ThreadingHTTPServer((host, port), H)
 
 if __name__ == '__main__':
