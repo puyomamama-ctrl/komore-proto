@@ -11,7 +11,7 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
 .q{font-size:18px;color:#cbd5e1;min-height:1.4em}.a{font-size:26px;font-weight:700;line-height:1.5;min-height:1.5em}
 #standby{position:fixed;inset:0;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-size:24px}
 #standby small{font-size:15px;color:#94a3b8}.dbg{font-size:12px;color:#64748b}
-.note{font-size:12px;color:#94a3b8;padding:8px 14px}
+.note{font-size:12px;color:#94a3b8;padding:8px 14px}#restart{margin-top:16px;background:#22c55e;color:#04210f;border:0;border-radius:12px;padding:14px 24px;font-size:18px;font-weight:800}
 </style></head><body>
 <header><span id="name">AI受付</span><button id="staff">スタッフを呼ぶ</button></header>
 <main>
@@ -35,11 +35,24 @@ let session = Math.random().toString(36).slice(2, 10);
 const $ = id => document.getElementById(id);
 let state = 'idle', idleTimer;
 function needLogin() { SK.stopAudio(); $('authwall').style.display = 'flex'; SK.authBox($('authbox'), { slug, onDone: () => { $('authwall').style.display = 'none'; init(); } }); }
+function restartConv() {
+  session = Math.random().toString(36).slice(2, 10);
+  $('q').textContent = ''; $('cards').style.display = 'none'; $('cards').innerHTML = '';
+  $('a').innerHTML = 'ボタンを押して話しかけてください<br><span style="font-size:16px;color:#94a3b8">Tap and ask in English, too.</span>';
+  setMic('idle'); touch();
+}
 function showDegraded(j) {
-  $('q').textContent = ''; $('a').textContent = j.message || '現在AI音声が利用できません。スタッフにお声がけください。';
+  $('q').textContent = '';
+  if (j.level === 'conv_end') {
+    $('cards').style.display = 'none'; $('cards').innerHTML = '';
+    $('a').innerHTML = esc(j.message || 'お時間になりました。続きはスタッフにお声がけください。') + '<br><button type="button" id="restart">最初からはじめる</button>';
+    session = Math.random().toString(36).slice(2, 10);
+    $('restart').onclick = restartConv;
+    setMic('idle'); touch(); return;
+  }
+  $('a').textContent = j.message || '現在AI音声が利用できません。スタッフにお声がけください。';
   const c = $('cards'); c.style.display = (j.cards || []).length ? 'block' : 'none';
   c.innerHTML = (j.cards || []).map(x => `<div style="margin-top:8px"><b>${esc(x.title)}</b><br>${x.lines.map(esc).join('<br>')}</div>`).join('');
-  if (j.level === 'conv_end') session = Math.random().toString(36).slice(2, 10);   // 次は新しい会話
   setMic('idle'); touch();
 }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));

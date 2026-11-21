@@ -483,12 +483,36 @@ def llm_json(system, user, model=None, store_id=None, purpose='', max_out=700):
     data = json.loads(m.group()) if m else {}
     return data, {'model': model, 'ms': round(ms), 'usage': usage, 'cost_usd': cost}
 
+def asr_glossary(store_id=None):
+    """音声認識に渡す店名・予約経路などの語彙ヒント（Qwen3-ASR の system コンテキスト）。"""
+    words = ['Klook', 'Japan Ticket', 'ジャパンチケット', 'クルック', 'YAVAY', 'ヤバイ']
+    if store_id:
+        try:
+            d = store_data(store_id)
+            nm = (d.get('store') or {}).get('name')
+            if nm: words.append(nm)
+            for tr in d.get('price_tiers') or list_tiers(store_id):
+                words.append(tr.get('name') or '')
+                words.extend(x for x in (tr.get('aliases') or '').split(',') if x.strip())
+        except Exception:
+            pass
+    seen, out = set(), []
+    for w in words:
+        w = str(w or '').strip()
+        if w and w.lower() not in seen:
+            seen.add(w.lower()); out.append(w)
+    return '語彙（優先して認識）: ' + '、'.join(out[:40])
+
 def asr(audio_bytes, mime='audio/webm', lang=None, store_id=None, purpose=''):
     require_priced('qwen3-asr-flash')
     t = time.time()
-    body = {'model': 'qwen3-asr-flash', 'stream': False,
-            'messages': [{'role': 'user', 'content': [{'type': 'input_audio', 'input_audio': {
-                'data': f'data:{mime};base64,' + base64.b64encode(audio_bytes).decode()}}]}],
+    messages = []
+    gloss = asr_glossary(store_id)
+    if gloss:
+        messages.append({'role': 'system', 'content': [{'text': gloss}]})
+    messages.append({'role': 'user', 'content': [{'type': 'input_audio', 'input_audio': {
+        'data': f'data:{mime};base64,' + base64.b64encode(audio_bytes).decode()}}]})
+    body = {'model': 'qwen3-asr-flash', 'stream': False, 'messages': messages,
             'asr_options': {'enable_itn': True, **({'language': lang} if lang else {})}}
     j = _post(DS_BASE + '/compatible-mode/v1/chat/completions', body, _ds_headers(), purpose=purpose or 'asr')
     ms = (time.time() - t) * 1000
@@ -543,6 +567,8 @@ ASK_SYS = """あなたは店舗の受付AI（接客AI）です。【店舗デー
 - 直前のやり取りがあるときは、「それ」「そのプラン」「お得」などの指示や感想を直前の話題として受け取る。
 - 「お得？」「いい感じ？」のような感想・評価には、店舗データの料金や内容の事実を伝えて答える。お得かどうかや優劣は断定しない。データにない比較・割引も言わない。使える事実があれば answerable=true。
 - 注文や予約の代行はできない。メニューやプラン、頼み方が店舗データにあればそれを案内し、注文そのものはスタッフに申し出てほしいと添える。案内できる事実があるのに answerable=false にしない。
+- 商品名・料理名・ドリンク名は店舗データに書かれているものだけ言う。データにない品名は出さない。
+- 条件付きの注記（VIP席のみのサービス料、曜日限定、期間限定など）は、お客様の質問や今案内しているプラン・席にその条件が当てはまるときだけ言う。当てはまらない条件を付け足さない。
 - fact_ids には回答の根拠にした事実IDをすべて入れる（partial でも使った事実は入れる）。
 - missing には、より具体的に答えるために店舗データに足りなかった情報を短い項目名で入れる（例: "誕生日の対応", "一人客の入りやすさ"）。無ければ空。
 出力はJSONのみ: {"answerable": true/false, "answer_level": "specific|partial|none", "fact_ids": ["P1"], "answer": "…", "lang": "ja", "missing": ["…"]}"""
@@ -621,27 +647,38 @@ def answer_question(store_id, question, now=None, model=None, purpose='ask', tie
     elif any(i in conflicts for i in ids):
         status, reason = 'fallback', 'conflict'
     else:
-        chk = _strip_now_time(normalize_nums(COUNT_WORDS.sub('', ans)), now)
-        extra = nums_in(chk) - allowed_nums([fmap[i] for i in ids]) - people_nums(question)
-        extra -= question_nums_in_negation(COUNT_WORDS.sub('', ans), question)
-        if extra:
-            # 引用した事実に無い数字でも、店舗データに『N円』としてある金額なら引用漏れ（捏造ではない）。事実IDを補う。
-            # 店舗に無い金額（例: 「1円にして」）はこれまでどおり止める。
-            invented = extra - yen_nums('\n'.join(fmap.values()))
-            if invented:
-                status, reason = 'fallback', f'number_guard:{sorted(invented)}'
-            else:
-                need = set(extra)
-                for fid, txt in fmap.items():
-                    if fid not in ids and (need & yen_nums(txt)):
-                        ids.append(fid)
-        if status == 'answered':
-            if re.search(r'未登録|不明|not registered|unknown', ans, re.I):
-                status, reason = 'fallback', 'unregistered_word'
-            elif (mm := fact_check(store_id, ans, [fmap[i] for i in ids], tier=tier)):
-                status, reason = 'fallback', 'fact_mismatch:' + mm
+        # 先に店データに無い品名・当てはまらない条件注記の文を落とす。残った文だけを数字ガードする（例: 一般説明に付いたVIP 25%で答案全体を落とさない）。
+        ans2, dropped = sanitize_answer(store_id, ans, question, history, tier=tier)
+        if dropped:
+            ans = ans2
+            if not re.sub(r'[\s。．.！？!?]+', '', ans or ''):
+                status, reason = 'fallback', 'sanitize:' + ','.join(dropped)
             elif str(data.get('answer_level')) == 'partial':
                 reason = 'partial'
+        elif str(data.get('answer_level')) == 'partial':
+            reason = 'partial'
+        if status == 'answered':
+            # パーセント（サービス料25%など）は金額ではないので数字ガードの対象外。
+            chk = _strip_now_time(normalize_nums(COUNT_WORDS.sub('', ans)), now)
+            chk = re.sub(r'\d+\s*[%％]', '', chk)
+            extra = nums_in(chk) - allowed_nums([fmap[i] for i in ids]) - people_nums(question)
+            extra -= question_nums_in_negation(COUNT_WORDS.sub('', ans), question)
+            if extra:
+                # 引用した事実に無い数字でも、店舗データに『N円』としてある金額なら引用漏れ（捏造ではない）。事実IDを補う。
+                # 店舗に無い金額（例: 「1円にして」）はこれまでどおり止める。
+                invented = extra - yen_nums('\n'.join(fmap.values()))
+                if invented:
+                    status, reason = 'fallback', f'number_guard:{sorted(invented)}'
+                else:
+                    need = set(extra)
+                    for fid, txt in fmap.items():
+                        if fid not in ids and (need & yen_nums(txt)):
+                            ids.append(fid)
+            if status == 'answered':
+                if re.search(r'未登録|不明|not registered|unknown', ans, re.I):
+                    status, reason = 'fallback', 'unregistered_word'
+                elif (mm := fact_check(store_id, ans, [fmap[i] for i in ids], tier=tier)):
+                    status, reason = 'fallback', 'fact_mismatch:' + mm
     if status != 'answered':
         ans = FALLBACK[lang]
     missing = [str(m)[:30] for m in (data.get('missing') or []) if str(m).strip()][:3]
@@ -681,6 +718,121 @@ def fact_check(store_id, ans, cited_texts, tier=None):
             if mm and not re.search(r'[、。]', tail[:mm.start()]) and int(mm.group(1)) not in prices[name]:
                 return f'price:{name}'
     return ''
+
+def _name_variants(name):
+    """料金・メニュー名の言い方（括弧書きや『山盛りフライドポテト』の末尾など）。短すぎる破片は使わない。"""
+    name = unicodedata.normalize('NFKC', name or '').strip()
+    out = set()
+    if name:
+        out.add(name)
+        out.add(re.sub(r'（[^）]*）|\([^)]*\)', '', name).strip())
+    for p in re.split(r'[\s　！!／/・|]+', name):
+        p = re.sub(r'（[^）]*）|\([^)]*\)', '', p).strip()
+        if len(p) >= 2 and not re.fullmatch(r'[\d,.¥円]+', p):
+            out.add(p)
+    return {n for n in out if n and (len(n) >= 3 or re.search(r'[一-龠々ァ-ヶー]', n) and len(n) >= 2)}
+
+def catalog_terms(store_id, tier=None):
+    """店舗データに出てくる品名・プラン名とその言い方、本文に出てくる単語。照合の許可リスト。"""
+    d = store_data(store_id)
+    terms = set()
+    for r in d.get('menu', []):
+        terms |= _name_variants(r.get('name'))
+    for r in d.get('prices', []):
+        if tier and tier != '*' and r.get('tier') and r['tier'] != tier:
+            continue
+        terms |= _name_variants(r.get('name'))
+    for tr in d.get('price_tiers', []):
+        terms |= _name_variants(tr.get('name'))
+        terms.update(x.strip() for x in (tr.get('aliases') or '').split(',') if x.strip())
+    blob = []
+    for r in d.get('menu', []):
+        blob.append(r.get('name') or ''); blob.append(r.get('note') or ''); blob.append(r.get('category') or '')
+    for r in d.get('prices', []):
+        if tier and tier != '*' and r.get('tier') and r['tier'] != tier:
+            continue
+        blob.append(r.get('name') or ''); blob.append(r.get('note') or '')
+    for tr in d.get('price_tiers', []):
+        blob.append(tr.get('name') or ''); blob.append(tr.get('aliases') or '')
+    for r in d.get('faqs', []):
+        blob.append(r.get('topic') or ''); blob.append(r.get('answer') or '')
+    for r in d.get('profile', []):
+        blob.append(r.get('slot') or ''); blob.append(r.get('answer') or '')
+    corpus = unicodedata.normalize('NFKC', '\n'.join(blob))
+    return terms, corpus
+
+def _sentences(text):
+    return [p for p in re.findall(r'[^。！？!?]+[。！？!?]?', text or '') if p.strip()]
+
+def _item_candidates(sent, terms):
+    """品名を言う文脈（『N円のAやB』『AはN円』『AやBもございます』）から、候補の品名を取り出す。"""
+    t = unicodedata.normalize('NFKC', sent or '')
+    for name in sorted(terms, key=len, reverse=True):
+        if name and name in t:
+            t = t.replace(name, '◇')
+    cands = []
+    # 漢字・カタカナ・英字を中心に、送り仮名（揚げ）だけ短く許す。ひらがなが続くと『カクテルなど多数が…』まで取ってしまう。
+    word = r'[一-龠々ァ-ヶーA-Za-z]{2,20}[ぁ-ん]{0,2}'
+    for m in re.finditer(r'\d+円の([^。]+?)(?=です|ございます|あります|もあります|もございます|なども|など|。|$)', t):
+        cands.extend(re.split(r'[や、,／]', m.group(1)))
+    for m in re.finditer(r'(' + word + r')(?<!で)(?:は|が|を)\s*\d[\d,]*円', t):
+        cands.append(m.group(1))
+    if '◇' in t or re.search(r'\d+円', t):
+        cands.extend(re.findall(r'や(' + word + r')', t))
+        cands.extend(re.findall(r'(' + word + r')や◇', t))
+        cands.extend(re.findall(r'◇や(' + word + r')', t))
+    stop = {'単品','多数','対象','注文','スタッフ','こちら','飲み物','ドリンク','メニュー','プラン','料理','フード','お酒'}
+    out = []
+    for c in cands:
+        c = c.replace('◇', '').strip()
+        c = re.sub(r'^\d+円の?', '', c)
+        c = re.sub(r'(など|迄|まで|も|は|が|を|の|で|と|に|へ|より|かも)$', '', c.strip())
+        if c and len(c) >= 2 and c not in stop and not re.fullmatch(r'[\d,.円の]+', c):
+            out.append(c)
+    return out
+
+def unknown_item_names(sent, terms, corpus):
+    """店舗データに無い品名。本文や登録名に部分一致すれば許可（『山盛りフライドポテト』に対する『フライドポテト』）。"""
+    bad = []
+    for c in _item_candidates(sent, terms):
+        if c in terms or c in corpus:
+            continue
+        if any(len(n) >= 2 and (c in n or n in c) for n in terms):
+            continue
+        bad.append(c)
+    return bad
+
+_COND_MARK = re.compile(r'(ただし|但し|なお|尚|別途|利用時|の場合|に限り|に限る|に限って|のみ対象|だけの)')
+_VIP_RE = re.compile(r'VIP|vip|ＶＩＰ|ブイアイピー')
+
+def _has_vip_product(text, terms):
+    return any(_VIP_RE.search(n) and n in (text or '') for n in terms) or bool(_VIP_RE.search(text or '') and not re.search(r'(利用時|の場合|に限り|ただし|但し|なお|尚|別途)', text or ''))
+
+def inapplicable_condition(sent, topic, terms):
+    """今の話題に当てはまらない条件注記（例: YAVAY PLANの説明にVIP席専用のサービス料を付ける）。当てはまるときは残す。"""
+    if not _COND_MARK.search(sent or ''):
+        return False
+    if _VIP_RE.search(sent or '') and not _VIP_RE.search(topic or '') and not _has_vip_product(topic, terms):
+        return True
+    return False
+
+def sanitize_answer(store_id, ans, question, history=None, tier=None):
+    """データに無い品名を含む文、今の話題に当てはまらない条件注記の文を落とす。残った文だけで答えられるなら拒否しない。"""
+    if not (ans or '').strip():
+        return ans, []
+    terms, corpus = catalog_terms(store_id, tier=tier)
+    topic = '\n'.join([question or ''] + [f'{q0}\n{a0}' for q0, a0 in (history or [])])
+    kept, dropped = [], []
+    for sent in _sentences(ans):
+        bad = unknown_item_names(sent, terms, corpus)
+        if bad:
+            dropped.append('item:' + '/'.join(bad)); continue
+        if inapplicable_condition(sent, topic, terms):
+            dropped.append('cond'); continue
+        kept.append(sent)
+    if not dropped:
+        return ans, []
+    return ''.join(s if re.search(r'[。！？!?]$', s) else s + '。' for s in kept), dropped
 
 AUDIT_SYS = """あなたは接客AIの回答の監査役です。【店舗データ】だけが事実です。お客様に返した【回答】に、店舗データに無いことの言い切り、または店舗データと食い違う内容が無いか調べます。
 - 可否・適否（〜できます、大丈夫です、向いています、使えます）を、店舗データに明記が無いのに言い切っていれば unsupported。
@@ -1530,7 +1682,7 @@ def growth(store_id, days=14):
 _CLARIFY = {}          # 互換のため残す。実体は _SESS
 _SESS = {}             # (store_id, session) → メモリだけ（保存しない）
 CLARIFY_TTL = 180
-SESS_TTL = 600
+SESS_TTL = 1200
 BOTH_RE = re.compile(r'(両方|りょうほう|それぞれ|どちらも|どっちも|違い|ちがい|差|比べ|比較|区分ごと|経路ごと)')
 PRICE_HINT = re.compile(r'(いくら|料金|値段|円|価格|チャージ|席料|飲み放題|予算|プラン|会計|お代)')
 
@@ -1541,19 +1693,90 @@ def list_tiers(store_id):
 def _nz(t):
     return re.sub(r'[\s・/／、,.。!！?？「」]+', '', unicodedata.normalize('NFKC', t or '').lower())
 
-def match_tiers(tiers, text):
-    """お客様の発話に出てくる区分（区分名・別名）。名前の各部分（『Japan Ticket/Klook』→ japan ticket, klook）も手がかりにする。"""
-    t = _nz(text); hit = []
+# 予約経路のよくある聞き間違い（カナ・ローマ字の揺れ）。店の aliases に無くても判定に使う。
+_KLOOK_VARS = ['klook', 'kurukku', 'clook', 'keelook', 'クルック', 'クルクル', 'クルクルス', 'くるっく', 'くるくる', 'くるくるす', 'クルク']
+_JT_VARS = ['japan ticket', 'japanticket', 'ジャパンチケット', 'ジャパン・チケット', 'ジャパチケ', 'ジャパンチケ', 'じゃぱちけ', 'じゃぱんちけっと']
+
+def _fold(t):
+    """照合用：英字は小文字、カタカナはひらがな、空白・句読点を除く。"""
+    t = unicodedata.normalize('NFKC', t or '').lower()
+    t = ''.join(chr(ord(c) - 0x60) if 'ァ' <= c <= 'ン' else c for c in t)
+    return re.sub(r'[\s・/／、,.。!！?？「」\-]+', '', t)
+
+def _lev(a, b):
+    if a == b: return 0
+    if not a or not b or abs(len(a) - len(b)) > 2: return 99
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+def _tier_all_keys(tr):
+    keys = {tr['name'], *re.split(r'[/／・]', tr['name']), *(x.strip() for x in (tr['aliases'] or '').split(',') if x.strip())}
+    blob = (tr['name'] + ' ' + (tr['aliases'] or '')).lower()
+    if 'klook' in blob or 'クルック' in blob or 'くるっく' in blob:
+        keys.update(_KLOOK_VARS)
+    if 'japan' in blob or 'チケット' in blob or 'ジャパン' in blob:
+        keys.update(_JT_VARS)
+    return [k for k in keys if k]
+
+def _short_alias_ok(folded, kk):
+    """『公式』『直接』など2文字の別名は、助詞の隣か文の端にあるときだけ採用（『非公式』などの誤爆を避ける）。"""
+    i = 0
+    while True:
+        j = folded.find(kk, i)
+        if j < 0:
+            return False
+        prev = folded[j - 1] if j else ''
+        nxt = folded[j + len(kk):j + len(kk) + 1]
+        edge = 'とのはがをにでやかも'
+        if (not prev or prev in edge or prev in 'abcdefghijklmnopqrstuvwxyz0123456789') and (not nxt or nxt in edge):
+            return True
+        i = j + 1
+
+def classify_tiers(tiers, text):
+    """区分の判定。(確実に当たった区分, 近いだけの区分)。近いだけでは『それ以外』に倒さない。"""
+    folded = _fold(text); hits, close = [], []
     for tr in tiers:
-        keys = {tr['name']} | set(re.split(r'[/／・]', tr['name'])) | set((tr['aliases'] or '').split(','))
-        if any(k and _nz(k) and _nz(k) in t for k in keys):
-            hit.append(tr['name'])
-    return hit
+        conf = maybe = False
+        other = tr['name'] in ('それ以外', 'その他')
+        for k in _tier_all_keys(tr):
+            kk = _fold(k)
+            if not kk: continue
+            if kk in folded:
+                if other and len(kk) <= 2 and folded not in (kk, kk + 'です') and not folded.startswith(kk) and not folded.endswith(kk) and not _short_alias_ok(folded, kk):
+                    continue
+                conf = True; break
+            if other or len(kk) < 4 or len(folded) < 4:
+                continue
+            d = _lev(kk, folded)
+            if d <= 1: conf = True; break
+            if d <= 2: maybe = True
+        if conf: hits.append(tr['name'])
+        elif maybe: close.append(tr['name'])
+    return hits, close
+
+def match_tiers(tiers, text):
+    """お客様の発話に出てくる区分（区分名・別名・よくある聞き間違い）。確実なヒットだけ返す。"""
+    return classify_tiers(tiers, text)[0]
+
+def confirm_tier_text(name, tiers):
+    """近い候補があるときの確認（例: 『Klookでしょうか？』）。無いときは通常の聞き返し。"""
+    if name:
+        if re.search(r'klook|クルック', name, re.I):
+            return 'Klookでしょうか？'
+        if name in ('それ以外', 'その他'):
+            return 'それ以外のご予約でしょうか？'
+        return name.replace('/', 'か').replace('／', 'か') + 'でしょうか？'
+    return 'もう一度お願いします。' + clarify_text(tiers)
 
 def _tier_keys(tiers):
     keys = []
     for tr in tiers:
-        keys.extend([tr['name'], *re.split(r'[/／・]', tr['name']), *(tr['aliases'] or '').split(',')])
+        keys.extend(_tier_all_keys(tr))
     return sorted({k.strip() for k in keys if k and str(k).strip()}, key=len, reverse=True)
 
 def is_tier_reply(tiers, text):
@@ -1597,8 +1820,8 @@ def _bump_sess(st, q, a, last_price_q=None, tier=None, now=None):
 
 def answer_turn(store_id, question, session='', now=None, model=None, purpose='ask'):
     """接客の1ターン。二重価格の店で料金を聞かれ、区分が分からなければ答えずに1回だけ聞き返す（AIを使わない・費用ゼロ）。
-    聞き返しへの返事で区分が分かれば、元の質問をその区分で答える。同じセッションの続きでは、選んだ区分と直前のやり取りを引き継ぐ。
-    両方を聞かれたら両方答える。区分の無い店は今までどおり。"""
+    聞き返しへの返事で区分が分かれば、元の質問をその区分で答える。判定できないときは近い候補で1回聞き直し、まだ不明なら区分ごとに答える（それ以外に倒さない）。
+    同じセッションの続きでは、選んだ区分と直前のやり取りを引き継ぐ。両方を聞かれたら両方答える。区分の無い店は今までどおり。"""
     tiers = list_tiers(store_id)
     if not tiers:
         return answer_question(store_id, question, now=now, model=model, purpose=purpose)
@@ -1634,12 +1857,28 @@ def answer_turn(store_id, question, session='', now=None, model=None, purpose='a
         return res
 
     if pend:
-        hit = match_tiers(tiers, question)
-        if len(hit) == 1 or len(hit) >= 2 or BOTH_RE.search(question) or not is_price_question(question):
-            tier = hit[0] if len(hit) == 1 else '*'   # 返事が分からないときは聞き返しを繰り返さず、区分ごとに答える
+        hit, close = classify_tiers(tiers, question)
+        if len(hit) == 1 or len(hit) >= 2 or BOTH_RE.search(question):
+            tier = hit[0] if len(hit) == 1 else '*'
             res = answer_question(store_id, pend[0], now=now, model=model, purpose=purpose, tier=tier, history=history)
             return _finish(res, tier=tier, log_q=f"{pend[0]}（{hit[0] if len(hit) == 1 else '区分ごと'}）",
                            last_price_q=pend[0], clear_pend=True)
+        n = int((st or {}).get('clarify_n') or 1)
+        if not is_price_question(question):
+            # 区分の返事がどれとも確実でない。1回目は近い候補で聞き直す。2回目も不明なら両方の料金を並べる。『それ以外』に倒さない。
+            if n >= 2:
+                res = answer_question(store_id, pend[0], now=now, model=model, purpose=purpose, tier='*', history=history)
+                return _finish(res, tier='*', log_q=f"{pend[0]}（区分ごと）", last_price_q=pend[0], clear_pend=True)
+            guess = close[0] if len(close) == 1 else None
+            ans = confirm_tier_text(guess, tiers)
+            with _lock:
+                if st is not None:
+                    st['clarify_n'] = n + 1
+                    st['pend'] = pend
+                    _CLARIFY[key] = pend
+                    _bump_sess(st, question, ans, last_price_q=pend[0])
+            return {'answer': ans, 'status': 'answered', 'reason': 'clarify', 'lang': 'ja', 'fact_ids': ['K0'],
+                    'llm': {'model': '-', 'ms': 0, 'usage': {'in': 0, 'out': 0}, 'cost_usd': 0.0}, 'missing': [], 'tier': None}
     if st and st.get('last_price_q') and is_tier_reply(tiers, question) and len(match_tiers(tiers, question)) == 1:
         tier = match_tiers(tiers, question)[0]
         q0 = st['last_price_q']
@@ -1658,6 +1897,7 @@ def answer_turn(store_id, question, session='', now=None, model=None, purpose='a
             with _lock:
                 if st is not None:
                     st['pend'] = (question[:MAX_QUESTION_CHARS], time.time() + CLARIFY_TTL)
+                    st['clarify_n'] = 1
                 _CLARIFY[key] = (question[:MAX_QUESTION_CHARS], time.time() + CLARIFY_TTL)
                 if st is not None:
                     _bump_sess(st, question, clarify_text(tiers), last_price_q=question)

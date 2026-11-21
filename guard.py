@@ -1,6 +1,6 @@
 """API費用ガード（docs/API_COST_GUARDRAILS.md の実装）。
 目的：月額2,980円のプランでも赤字が無制限に拡大しないこと。上限到達時は接客を真っ白にせず安全に縮退する。
-  層1 会話単位（120秒・8ターン）／層2 店舗の日・月（回数・分数・原価円）／層3 サービス全体の月予算／層4 レート・同時接続・異常検知
+  層1 会話単位（900秒・20ターン）／層2 店舗の日・月（回数・分数・原価円）／層3 サービス全体の月予算／層4 レート・同時接続・異常検知
   ＋ 外部事業者コンソール側の月額上限（乃木／運営の作業。ここでは設定しない）
 - 判定は『事前予約方式』：ターン開始時に想定最大原価を日・月・全体カウンターへ仮計上し、収まらなければ開始しない。
   カウンター更新は BEGIN IMMEDIATE の1トランザクション（並行リクエストでも上限を超えない）。終了時に実績で確定。
@@ -313,7 +313,7 @@ def cards(store_id):
 
 def degraded_payload(store_id, den):
     return {'degraded': True, 'level': den.level, 'reason': den.reason, 'message': den.message, 'until': den.until,
-            'cards': cards(store_id) if den.level in ('L2', 'L3', 'blocked', 'conv_end') else [], 'staff_call': True}
+            'cards': cards(store_id) if den.level in ('L2', 'L3', 'blocked') else [], 'staff_call': True}
 
 def usage_report(store_id, now=None):
     """オーナー画面の「利用状況」。会話本文は保存していないため表示しない。"""

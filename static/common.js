@@ -3,15 +3,15 @@ const SK = {};
 SK.ctx = null;
 SK.ensureCtx = () => { if (!SK.ctx) SK.ctx = new (window.AudioContext || window.webkitAudioContext)(); if (SK.ctx.state === 'suspended') SK.ctx.resume(); return SK.ctx; };
 SK.pickMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
-SK.record = async ({ maxMs = 15000, silenceMs = 1100, onLevel } = {}) => {
+SK.record = async ({ maxMs = 15000, silenceMs = 1600, onLevel } = {}) => {
   const ctx = SK.ensureCtx();
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
   const mime = SK.pickMime();
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
   const chunks = []; rec.ondataavailable = e => e.data.size && chunks.push(e.data);
   const src = ctx.createMediaStreamSource(stream); const an = ctx.createAnalyser(); an.fftSize = 1024; src.connect(an);
   const buf = new Float32Array(an.fftSize);
-  let spoke = false, lastLoud = performance.now(); const t0 = performance.now();
+  let spoke = false, lastLoud = performance.now(), amb = 0, nAmb = 0; const t0 = performance.now();
   SK.stopRec = () => rec.state === 'recording' && rec.stop();
   return new Promise(res => {
     rec.onstop = async () => {
@@ -26,7 +26,9 @@ SK.record = async ({ maxMs = 15000, silenceMs = 1100, onLevel } = {}) => {
       an.getFloatTimeDomainData(buf); let s = 0; for (const v of buf) s += v * v; const rms = Math.sqrt(s / buf.length);
       onLevel && onLevel(rms);
       const now = performance.now();
-      if (rms > 0.02) { spoke = true; lastLoud = now; }
+      if (now - t0 < 280) { amb += rms; nAmb += 1; requestAnimationFrame(tick); return; }  // 最初の一瞬は周囲音として見る
+      const thresh = Math.max(0.03, (nAmb ? amb / nAmb : 0) * 2.5 + 0.012);
+      if (rms > thresh) { spoke = true; lastLoud = now; }
       if ((spoke && now - lastLoud > silenceMs) || now - t0 > maxMs) return rec.stop();
       requestAnimationFrame(tick);
     };

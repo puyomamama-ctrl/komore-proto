@@ -1,6 +1,6 @@
 {
-  "_note": "API費用ガードの既定値（docs/API_COST_GUARDRAILS.md §3）。全て【仮説】で、実店舗テストの実績で調整する。コードに埋め込まず、ここと store_limits（店舗別上書き）で持つ。",
-  "conversation": {"max_seconds": 120, "max_turns": 8, "turn_audio_max_sec": 15, "owner_audio_max_sec": 60, "max_question_chars": 200,
+  "_note": "API費用ガードの既定値（docs/API_COST_GUARDRAILS.md §3）。全て【仮説】で、実店舗テストの実績で調整する。2026-11-21：1会話は店頭で十数問できるよう 900秒・20ターン（日次60会話/90円は維持）。コードに埋め込まず、ここと store_limits（店舗別上書き）で持つ。",
+  "conversation": {"max_seconds": 900, "max_turns": 20, "turn_audio_max_sec": 15, "owner_audio_max_sec": 60, "max_question_chars": 200,
                    "tts_max_chars": 150, "llm_max_out_tokens": 250, "turn_reserve_sec": 20},
   "plans": {
     "light":    {"month_minutes": 150,  "month_yen": 900,  "day_minutes": 15,  "day_convs": 60,  "concurrent": 2},
@@ -9,7 +9,7 @@
   },
   "day_yen_ratio": 0.1,
   "owner_voice_per_day": 30,
-  "rate": {"session_per_min": 20, "store_per_min": 60, "ip_per_min": 120, "admin_per_min": 60, "denials_to_block": 5, "block_minutes": 10},
+  "rate": {"session_per_min": 40, "store_per_min": 60, "ip_per_min": 120, "admin_per_min": 60, "denials_to_block": 5, "block_minutes": 10},
   "global": {"month_yen": 2396, "concurrent": 20},
   "warn_ratio": 0.8,
   "anomaly": {"same_question_per_min": 5, "rapid_gap_sec": 3, "rapid_count": 10, "empty_window": 20, "empty_ratio": 0.7, "cost_hour_ratio_of_day": 0.5},
