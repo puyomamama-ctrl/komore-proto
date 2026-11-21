@@ -79,7 +79,7 @@ function toStandby() { hideEnd(); SK.stopAudio(); SK.closeMic && SK.closeMic(); 
 $('standby').onclick = () => { SK.ensureCtx(); if (STT !== 'browser') SK.openMic().catch(() => {}); $('standby').style.display = 'none'; touch(); };
 function setMic(s) { state = s; const m = $('mic'); m.className = 'k-mic ' + ({ rec: 'rec', busy: 'busy', speak: 'speak' }[s] || ''); m.textContent = { idle: '話す', prep: '準備中…', rec: '聞いています…\n(タップで終了)', busy: '考えています…', speak: '話しています\n(タップで割り込み)' }[s]; }
 $('staff').onclick = () => { touch(); if ($('cards').style.display === 'none') { $('a').textContent = 'スタッフをお呼びしています。少々お待ちください。'; fitAnswer(); } SK.post(`/api/k/${slug}/staff`, { session }).catch(needLogin); };
-function browserSTT() { return new Promise((res, rej) => { const R = window.SpeechRecognition || window.webkitSpeechRecognition; if (!R) return rej(new Error('このブラウザは音声認識非対応')); const r = new R(); r.lang = P.get('lang') || 'ja-JP'; r.onresult = e => res(e.results[0][0].transcript); r.onerror = e => rej(new Error(e.error)); r.onend = () => res(''); r.start(); SK.stopRec = () => r.stop(); }); }
+function browserSTT() { return new Promise((res, rej) => { const R = window.SpeechRecognition || window.webkitSpeechRecognition; if (!R) return rej(new Error('このブラウザは音声認識非対応')); const r = new R(); r.lang = ({ja:'ja-JP',en:'en-US',zh:'zh-CN','zh-CN':'zh-CN','zh-TW':'zh-TW',ko:'ko-KR',es:'es-ES',fr:'fr-FR',de:'de-DE',it:'it-IT',pt:'pt-BR',ru:'ru-RU',th:'th-TH',vi:'vi-VN',id:'id-ID'})[P.get('lang')] || P.get('lang') || 'ja-JP'; r.onresult = e => res(e.results[0][0].transcript); r.onerror = e => rej(new Error(e.error)); r.onend = () => res(''); r.start(); SK.stopRec = () => r.stop(); }); }
 $('mic').onclick = async () => {
   touch();
   if (state === 'rec') { SK.stopRec && SK.stopRec(); return; }
@@ -99,7 +99,10 @@ $('mic').onclick = async () => {
     setMic('speak');
     let tFirst = null;
     if (TTS === 'local') { tFirst = performance.now(); await SK.speakLocal(j.answer, j.lang); }
-    else await SK.playPcmStream(`/api/k/${slug}/tts`, { tts_token: j.tts_token }, t => tFirst = t);
+    else if (j.tts !== false) {   // 読み上げ非対応の言語は文字だけ
+      try { await SK.playPcmStream(`/api/k/${slug}/tts`, { tts_token: j.tts_token }, t => tFirst = t); }
+      catch (e) { if (e.name === 'AbortError') throw e; tFirst = performance.now(); await SK.speakLocal(j.answer, j.lang).catch(() => {}); }   // 読み上げAPIが使えない時は端末の声で
+    }
     if (P.get('debug')) $('dbg').textContent = `文字表示まで ${Math.round(tText - tEnd)}ms / 音声開始まで ${Math.round((tFirst||tText) - tEnd)}ms / ASR ${j.timings.asr_ms} LLM ${j.timings.llm_ms} / ${j.status}`;
     if (state === 'speak') setMic('idle'); touch();
   } catch (e) { setMic('idle'); if (e.status === 401) return needLogin(); if (e.status === 429) { $('a').textContent = e.message; fitAnswer(); return; } if (e.name !== 'AbortError') { $('a').textContent = 'エラー: ' + e.message; fitAnswer(); } }

@@ -25,8 +25,14 @@ def _paths():
 
 def total():
     _, tp = _paths()
-    try: return json.load(open(tp))
-    except Exception: return {'jpy': 0.0, 'usd': 0.0, 'calls': 0}
+    try:
+        t = json.load(open(tp))
+        if not isinstance(t, dict):
+            raise ValueError('bad total')
+        t.setdefault('jpy', 0.0); t.setdefault('usd', 0.0); t.setdefault('calls', 0)
+        return t
+    except Exception:
+        return {'jpy': 0.0, 'usd': 0.0, 'calls': 0}
 
 def check(model=None):
     if model and model not in PRICING and model not in EXTRA_PRICE:

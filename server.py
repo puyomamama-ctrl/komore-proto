@@ -3,7 +3,7 @@
 権限：接客エンドポイント（/api/k/…）は店舗データを変更する経路を持たない。店舗データの変更は /api/admin/（オーナーのセッション）のみ。
 店舗IDはセッションから決める。URL・ボディのslugは『どの店舗の接客画面か』の指定にすぎず、セッションの店舗と一致しなければ拒否する。
 """
-import base64, io, json, os, re, sqlite3, sys, threading, time, urllib.parse, wave
+import itertools, base64, io, json, os, re, sqlite3, sys, threading, time, urllib.parse, wave
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import core, audit, guard, photo_import, web_import, persist
 import accounts as A
@@ -241,8 +241,9 @@ class H(BaseHTTPRequestHandler):
             timings['llm_ms'] = res['llm']['ms']; usage['llm_in'] = res['llm']['usage']['in']; usage['llm_out'] = res['llm']['usage']['out']
             usage['llm_model'] = res['llm']['model']; cost += res['llm']['cost_usd']
         except Exception as e:   # 事業者API障害など：誤回答せず定型文＋スタッフ案内。エラーとして計上
-            err = True; sys.stderr.write(f'provider error {type(e).__name__}\n')
-            res = {'answer': core.FALLBACK['ja'], 'status': 'fallback', 'reason': 'provider_error', 'lang': 'ja', 'fact_ids': [],
+            err = True; sys.stderr.write('provider error %s%s\n' % (type(e).__name__, (': missing ' + repr(e.args[0])) if isinstance(e, KeyError) and e.args else ''))
+            ql = core.detect_lang(q)
+            res = {'answer': core.fallback_text(ql), 'status': 'fallback', 'reason': 'provider_error', 'lang': ql, 'fact_ids': [],
                    'llm': {'model': '-', 'ms': 0, 'usage': {'in': 0, 'out': 0}, 'cost_usd': 0.0}}
         timings['server_ask_ms'] = round((time.time() - t0) * 1000)
         mode = body.get('mode') if body.get('mode') in ('kiosk', 'test', 'eval') else 'kiosk'
@@ -256,7 +257,8 @@ class H(BaseHTTPRequestHandler):
                        error=err, question=q, status=res['status'] + ':' + res['reason'])
         out = {'conv_id': cid, 'tts_token': tok, 'question': q, 'answer': res['answer'], 'status': res['status'],
                'reason': res['reason'], 'lang': res['lang'], 'fact_ids': res['fact_ids'], 'timings': timings, 'cost_usd': cost,
-               'staff_call': res['status'] != 'answered', 'clarify': res.get('reason') == 'clarify'}
+               'staff_call': res['status'] != 'answered', 'clarify': res.get('reason') == 'clarify',
+               'tts': core.tts_supported(res['lang'])}   # 読み上げ非対応の言語は文字だけで表示
         if audio:
             out['stt'] = {'model': (usage.get('asr_model') or ''), 'ms': timings.get('asr_ms')}
         return self._send(200, out)
@@ -266,9 +268,17 @@ class H(BaseHTTPRequestHandler):
         r = core.tts_take(store_id, body.get('tts_token'))
         if not r:
             return self._send(403, {'error': 'bad token'})
+        if not core.tts_supported(r['lang']):
+            return self._send(415, {'error': 'tts unsupported language', 'lang': r['lang']})
         self._stream_tts(r['answer'], r['lang'], conv_id=r['conv_id'], store_id=store_id, est_chars=len(r['answer']))
 
     def _stream_tts(self, text, lang, conv_id=None, store_id=None, est_chars=0):
+        gen = core.tts_stream(text, lang)
+        try:   # 最初の音が来るまでは普通のエラーとして返せる（画面側は端末の声に切り替える）
+            first = next(gen)
+        except Exception as e:
+            sys.stderr.write(f'tts error {type(e).__name__}\n')
+            return self._send(502, {'error': 'tts unavailable'})
         self.send_response(200)
         self.send_header('Content-Type', 'audio/L16; rate=24000; channels=1')
         self.send_header('Transfer-Encoding', 'chunked')
@@ -276,10 +286,13 @@ class H(BaseHTTPRequestHandler):
         for k, v in SEC_HEADERS.items(): self.send_header(k, v)
         self.end_headers()
         info = None
-        for ch in core.tts_stream(text, lang):
-            if isinstance(ch, tuple):
-                info = ch[1]; break
-            self.wfile.write(b'%x\r\n%s\r\n' % (len(ch), ch)); self.wfile.flush()
+        try:
+            for ch in itertools.chain([first], gen):
+                if isinstance(ch, tuple):
+                    info = ch[1]; break
+                self.wfile.write(b'%x\r\n%s\r\n' % (len(ch), ch)); self.wfile.flush()
+        except Exception as e:
+            sys.stderr.write(f'tts stream error {type(e).__name__}\n')
         self.wfile.write(b'0\r\n\r\n')
         if info:
             if conv_id: yen = core.add_tts_to_conv(conv_id, info, store_id) * guard.fx()

@@ -4,7 +4,11 @@ SK.ctx = null;
 SK.ensureCtx = () => { if (!SK.ctx) SK.ctx = new (window.AudioContext || window.webkitAudioContext)(); if (SK.ctx.state === 'suspended') SK.ctx.resume(); return SK.ctx; };
 SK.pickMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
 // マイクは一度開いたら使い回す（毎回開き直すと iPhone では話し始めが欠けやすい）
+// 音はPCMで受け取り、待ち受け中の周りの音（テレビ・隣の会話）を覚えておく。録音では「周りの音より十分大きい区間」
+// ＝近くで話している声だけを残し、それ以外は切り捨てて 16kHz WAV で送る。
+SK.VAD = { K: 2.0, ringSec: 5, silenceMs: 1200, preMs: 300, postMs: 600, gapMs: 1500, noSpeechMs: 6000, preRollMs: 500 };
 SK.mic = null;
+SK.isPlaying = () => (SK.ctx && SK.playEnd && SK.ctx.currentTime < SK.playEnd + 0.3) || (window.speechSynthesis && speechSynthesis.speaking);
 SK.openMic = async () => {
   const ctx = SK.ensureCtx();
   const m = SK.mic;
@@ -12,10 +16,21 @@ SK.openMic = async () => {
   if (m && m.opening) return m.opening;
   const opening = (async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
-    const src = ctx.createMediaStreamSource(stream); const an = ctx.createAnalyser(); an.fftSize = 1024; src.connect(an);
-    const mic = { stream, src, an, buf: new Float32Array(an.fftSize), ring: [], recording: false };
-    // 録音していない間の音量を約2秒ぶん覚えておき、背景ノイズの基準にする
-    mic.timer = setInterval(() => { if (mic.recording) return; mic.ring.push(SK.rmsOf(mic)); if (mic.ring.length > 40) mic.ring.shift(); }, 50);
+    const src = ctx.createMediaStreamSource(stream);
+    const mic = { stream, src, ring: [], pre: [], recording: false, sr: ctx.sampleRate, lastPcm: 0, onChunk: null };
+    if (ctx.createScriptProcessor) {
+      const sp = ctx.createScriptProcessor(2048, 1, 1); mic.sp = sp;
+      const mute = ctx.createGain(); mute.gain.value = 0; mic.mute = mute;
+      const ringMax = Math.round(SK.VAD.ringSec * ctx.sampleRate / 2048), preMax = Math.ceil(SK.VAD.preRollMs / 1000 * ctx.sampleRate / 2048);
+      sp.onaudioprocess = e => {
+        const x = new Float32Array(e.inputBuffer.getChannelData(0)); let s = 0; for (const v of x) s += v * v;
+        const r = Math.sqrt(s / x.length); mic.lastPcm = performance.now();
+        if (mic.onChunk) { mic.onChunk(x, r); return; }
+        mic.pre.push([x, r]); if (mic.pre.length > preMax) mic.pre.shift();
+        if (!SK.isPlaying()) { mic.ring.push(r); if (mic.ring.length > ringMax) mic.ring.shift(); }   // 自分の読み上げ中は周りの音に数えない
+      };
+      src.connect(sp); sp.connect(mute); mute.connect(ctx.destination);
+    }
     SK.mic = mic; return mic;
   })();
   SK.mic = { stream: new MediaStream(), opening };
@@ -24,60 +39,99 @@ SK.openMic = async () => {
 SK.closeMic = () => {
   const m = SK.mic; SK.mic = null;
   if (!m || m.opening) return;
-  clearInterval(m.timer); try { m.src.disconnect(); } catch (e) {}
+  try { m.src.disconnect(); m.sp && m.sp.disconnect(); m.mute && m.mute.disconnect(); } catch (e) {}
   m.stream.getTracks().forEach(t => t.stop());
 };
-SK.rmsOf = mic => { mic.an.getFloatTimeDomainData(mic.buf); let s = 0; for (const v of mic.buf) s += v * v; return Math.sqrt(s / mic.buf.length); };
 SK.pct = (a, p) => { if (!a.length) return null; const b = [...a].sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * p))]; };
-// 話し声のしきい値。背景ノイズは「静かな側（下位20%/10%）」から測るので、話し始めの声をノイズ扱いしない
-SK.threshOf = floor => { const f = floor == null ? 0.008 : floor; return Math.min(Math.max(0.02, f * 2.5 + 0.012), Math.max(0.06, f * 1.6)); };
-// 録音（無音で自動停止）。onStart は実際に録音が始まった瞬間に呼ばれる
-SK.record = async ({ maxMs = 15000, silenceMs = 1600, onLevel, onStart } = {}) => {
+// 近くの声のしきい値：静かな側（下位20%）の2.5倍＋α、かつ周りの音の大きい側（上位10%）の K 倍より大きいこと
+SK.nearThresh = ring => {
+  const ok = ring && ring.length >= 5, floor = ok ? SK.pct(ring, 0.2) : 0.008, bg = ok ? SK.pct(ring, 0.9) : 0;
+  return Math.max(0.02, floor * 2.5 + 0.012, bg * SK.VAD.K);
+};
+SK.wav16k = (parts, sr) => {   // Float32 の配列 → 16kHz 16bit モノラル WAV
+  let n = 0; for (const p of parts) n += p.length;
+  const x = new Float32Array(n); let o = 0; for (const p of parts) { x.set(p, o); o += p.length; }
+  const ratio = sr / 16000, m = Math.floor(x.length / ratio), out = new Int16Array(m);
+  for (let i = 0; i < m; i++) { const a = Math.floor(i * ratio), b = Math.min(x.length, Math.floor((i + 1) * ratio)); let s = 0; for (let j = a; j < b; j++) s += x[j]; const v = Math.max(-1, Math.min(1, s / Math.max(1, b - a))); out[i] = v < 0 ? v * 32768 : v * 32767; }
+  const buf = new ArrayBuffer(44 + out.length * 2), dv = new DataView(buf); const w = (p, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(p + i, t.charCodeAt(i)); };
+  w(0, 'RIFF'); dv.setUint32(4, 36 + out.length * 2, true); w(8, 'WAVE'); w(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, 16000, true); dv.setUint32(28, 32000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, 'data'); dv.setUint32(40, out.length * 2, true);
+  new Int16Array(buf, 44).set(out);
+  let bin = ''; const u8 = new Uint8Array(buf); for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(bin);
+};
+// 録音（近くの声だけ・無音で自動停止）。onStart は実際に録音が始まった瞬間に呼ばれる。
+// 返り値 voiced=false のときは近くで話した声が無かった（周りの音だけ）ので、認識に送らない。
+SK.record = async ({ maxMs = 15000, silenceMs = SK.VAD.silenceMs, onLevel, onStart } = {}) => {
   const mic = await SK.openMic();
-  const mime = SK.pickMime();
-  const rec = new MediaRecorder(mic.stream, mime ? { mimeType: mime } : {});
+  const alive = mic.sp && performance.now() - mic.lastPcm < 600;
+  if (!alive && mic.sp) await new Promise(r => setTimeout(r, 300));
+  if (!mic.sp || performance.now() - mic.lastPcm > 600) return SK.recordMR(mic, { maxMs, silenceMs, onLevel, onStart });
+  const V = SK.VAD, cs = 2048 / mic.sr * 1000;
+  const thr = SK.nearThresh(mic.ring);
+  const items = mic.pre.slice(); const npre = items.length; mic.pre = [];
+  const loud = items.map(([, r]) => r > thr);
+  let spoke = false, lastLoud = 0, k = 0; const t0 = performance.now();
+  return new Promise(res => {
+    const finish = () => {
+      mic.onChunk = null; mic.recording = false;
+      const a = Math.round(V.preMs / cs), b = Math.round(V.postMs / cs), g = Math.round(V.gapMs / cs);
+      const keep = new Array(items.length).fill(false);
+      loud.forEach((L, i) => { if (L) for (let j = Math.max(0, i - a); j <= Math.min(items.length - 1, i + b); j++) keep[j] = true; });
+      const idx = []; keep.forEach((x, i) => x && idx.push(i));
+      for (let i = 0; i + 1 < idx.length; i++) if (idx[i + 1] - idx[i] <= g) for (let j = idx[i]; j < idx[i + 1]; j++) keep[j] = true;
+      const parts = items.filter((_, i) => keep[i]).map(([x]) => x);
+      const voiced = spoke && parts.length > 0;
+      res({ b64: voiced ? SK.wav16k(parts, mic.sr) : '', mime: 'audio/wav', ms: performance.now() - t0, endedAt: performance.now(), spoke, voiced,
+            kept_ms: Math.round(parts.length * cs), thresh: thr });
+    };
+    SK.stopRec = () => { if (mic.onChunk) finish(); };
+    mic.recording = true;
+    mic.onChunk = (x, r) => {
+      items.push([x, r]); const L = r > thr; loud.push(L); k++;
+      onLevel && onLevel(r);
+      const t = k * cs, recent = loud.slice(-4).filter(Boolean).length;
+      if (L && (spoke || recent >= 2)) spoke = true;
+      if (L) lastLoud = t;
+      if ((spoke && t - lastLoud > silenceMs) || t > maxMs || (!spoke && t > V.noSpeechMs)) finish();
+    };
+    onStart && onStart();
+  });
+};
+// ScriptProcessor が使えないブラウザ向け（従来の MediaRecorder 録音）
+SK.recordMR = (mic, { maxMs, silenceMs, onLevel, onStart }) => {
+  const ctx = SK.ensureCtx(); const an = ctx.createAnalyser(); an.fftSize = 1024; mic.src.connect(an); const buf = new Float32Array(1024);
+  const lv = () => { an.getFloatTimeDomainData(buf); let s = 0; for (const v of buf) s += v * v; return Math.sqrt(s / buf.length); };
+  const mime = SK.pickMime(); const rec = new MediaRecorder(mic.stream, mime ? { mimeType: mime } : {});
   const chunks = []; rec.ondataavailable = e => e.data.size && chunks.push(e.data);
-  const preFloor = mic.ring.length >= 5 ? SK.pct(mic.ring, 0.2) : null;
-  const levels = [];
-  let spoke = false, maxRms = 0, lastLoud = 0, t0 = 0;
+  const thr = SK.nearThresh(mic.ring);
+  let spoke = false, lastLoud = 0, t0 = 0, started = false, recent = [];
   SK.stopRec = () => rec.state === 'recording' && rec.stop();
   return new Promise((res, rej) => {
     rec.onerror = e => { mic.recording = false; rej(e.error || new Error('録音エラー')); };
     rec.onstop = async () => {
-      mic.recording = false;
+      mic.recording = false; try { mic.src.disconnect(an); } catch (e) {}
       const blob = new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' });
       const b64 = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result.split(',')[1]); fr.readAsDataURL(blob); });
-      const ms = performance.now() - t0;
-      const floor = preFloor ?? SK.pct(levels, 0.1);
-      // 判定に落ちても、0.5秒以上あって背景より明らかに大きい音があれば認識に送る
-      const voiced = spoke || (ms > 500 && maxRms > Math.max(0.012, (floor || 0) * 1.8));
-      res({ b64, mime: (blob.type || 'audio/webm').split(';')[0], ms, endedAt: performance.now(), spoke, voiced });
+      res({ b64, mime: (blob.type || 'audio/webm').split(';')[0], ms: performance.now() - t0, endedAt: performance.now(), spoke, voiced: spoke, thresh: thr });
     };
-    let started = false;
     const begin = () => {
-      if (started) return; started = true;
-      mic.recording = true; t0 = performance.now(); lastLoud = t0;
-      onStart && onStart();
+      if (started) return; started = true; mic.recording = true; t0 = performance.now(); lastLoud = t0; onStart && onStart();
       const tick = () => {
         if (rec.state !== 'recording') return;
-        const rms = SK.rmsOf(mic); levels.push(rms); if (rms > maxRms) maxRms = rms;
-        onLevel && onLevel(rms);
-        const now = performance.now();
-        let floor = preFloor;
-        if (levels.length >= 15) { const p = SK.pct(levels, 0.1); floor = floor == null ? p : Math.min(floor, p); }
-        if (rms > SK.threshOf(floor)) { spoke = true; lastLoud = now; }
-        if ((spoke && now - lastLoud > silenceMs) || now - t0 > maxMs) return rec.stop();
+        const r = lv(); onLevel && onLevel(r); const now = performance.now(); const L = r > thr; recent.push(L); if (recent.length > 4) recent.shift();
+        if (L && (spoke || recent.filter(Boolean).length >= 2)) spoke = true;
+        if (L) lastLoud = now;
+        if ((spoke && now - lastLoud > silenceMs) || now - t0 > maxMs || (!spoke && now - t0 > SK.VAD.noSpeechMs)) return rec.stop();
         requestAnimationFrame(tick);
       };
       tick();
     };
-    rec.onstart = begin;
-    rec.start(200);
-    setTimeout(() => { if (rec.state === 'recording') begin(); }, 600);  // onstart が来ないブラウザ向けの保険
+    rec.onstart = begin; rec.start(200); setTimeout(() => { if (rec.state === 'recording') begin(); }, 600);
   });
 };
 SK.sources = [];
-SK.stopAudio = () => { SK.sources.forEach(s => { try { s.stop(); } catch (e) {} }); SK.sources = []; SK.abort && SK.abort.abort(); };
+SK.stopAudio = () => { SK.sources.forEach(s => { try { s.stop(); } catch (e) {} }); SK.sources = []; SK.playEnd = 0; SK.abort && SK.abort.abort(); };
 // サーバーの /tts から PCM(s16le, 24kHz) を読みながら順に再生。最初の音が鳴った時刻を返す
 SK.playPcmStream = async (url, body, onFirst) => {
   const ctx = SK.ensureCtx(); SK.stopAudio(); SK.abort = new AbortController();
@@ -91,12 +145,12 @@ SK.playPcmStream = async (url, body, onFirst) => {
     if (n < 2) continue;
     const i16 = new Int16Array(all.buffer.slice(0, n)); const ab = ctx.createBuffer(1, i16.length, 24000); const ch = ab.getChannelData(0);
     for (let i = 0; i < i16.length; i++) ch[i] = i16[i] / 32768;
-    const s = ctx.createBufferSource(); s.buffer = ab; s.connect(ctx.destination); t = Math.max(t, ctx.currentTime); s.start(t); t += ab.duration; SK.sources.push(s);
+    const s = ctx.createBufferSource(); s.buffer = ab; s.connect(ctx.destination); t = Math.max(t, ctx.currentTime); s.start(t); t += ab.duration; SK.playEnd = t; SK.sources.push(s);
     if (first) { first = false; onFirst && onFirst(performance.now()); }
   }
   return new Promise(res => setTimeout(res, Math.max(0, (t - ctx.currentTime) * 1000)));
 };
-SK.speakLocal = (text, lang) => new Promise(res => { const u = new SpeechSynthesisUtterance(text); u.lang = lang === 'en' ? 'en-US' : 'ja-JP'; u.onend = res; u.onerror = res; speechSynthesis.cancel(); speechSynthesis.speak(u); });
+SK.speakLocal = (text, lang) => new Promise(res => { const u = new SpeechSynthesisUtterance(text); u.lang = ({ en: 'en-US', zh: 'zh-CN', ko: 'ko-KR', es: 'es-ES', fr: 'fr-FR', de: 'de-DE', it: 'it-IT', pt: 'pt-BR', ru: 'ru-RU', th: 'th-TH', vi: 'vi-VN', id: 'id-ID' })[lang] || 'ja-JP'; u.onend = res; u.onerror = res; speechSynthesis.cancel(); speechSynthesis.speak(u); });
 // 端末ID：この端末のブラウザに保存するランダム値（登録コードで店員アカウントに紐付く。安全管理用で料金とは無関係）
 SK.deviceId = () => { let d = localStorage.getItem('sk_device'); if (!d) { d = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); localStorage.setItem('sk_device', d); } return d; };
 SK.adminSlug = () => { const m = (location.pathname || '').match(/^\/admin\/([a-z0-9-]+)$/); return m ? m[1] : ''; };

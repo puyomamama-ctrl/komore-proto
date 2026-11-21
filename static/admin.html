@@ -340,7 +340,7 @@ async function voiceRec() {
   const btn = $('vrec') || $('chgmic');
   if (btn) { btn.classList.add('rec'); btn.textContent = '準備中…'; }
   try {
-    const r = await SK.record({ maxMs: 30000, silenceMs: 1500, onStart: () => { if (btn) btn.textContent = '聞いています（タップで終了）'; } });
+    const r = await SK.record({ maxMs: 30000, silenceMs: 1500, onStart: () => { if (btn) btn.textContent = '聞いています（タップで終了）'; } }); if (!r.voiced) throw new Error('声が聞き取れませんでした。もう一度どうぞ。');
     if (btn) { btn.classList.remove('rec'); btn.textContent = 'マイクで話す'; }
     if ($('vtr')) $('vtr').textContent = '読み取っています…';
     showProposal(await SK.post('/api/admin/voice', { audio_b64: r.b64, mime: r.mime }));
@@ -350,7 +350,7 @@ async function voiceText() { const t = $('vtext') && $('vtext').value.trim(); if
 async function fabRec(btn) {
   btn.classList.add('rec'); btn.textContent = '…';
   try {
-    const r = await SK.record({ maxMs: 30000, silenceMs: 1500, onStart: () => { btn.textContent = '●'; } });
+    const r = await SK.record({ maxMs: 30000, silenceMs: 1500, onStart: () => { btn.textContent = '●'; } }); if (!r.voiced) throw new Error('声が聞き取れませんでした。もう一度どうぞ。');
     btn.classList.remove('rec'); btn.textContent = '🎤';
     showProposal(await SK.post('/api/admin/voice', { audio_b64: r.b64, mime: r.mime }));
   } catch (e) { btn.classList.remove('rec'); btn.textContent = '🎤'; alert(e.message); }
@@ -358,7 +358,7 @@ async function fabRec(btn) {
 async function micChange(btn) {
   btn.classList.add('rec'); btn.textContent = '準備中…';
   try {
-    const r = await SK.record({ maxMs: 30000, silenceMs: 1500, onStart: () => { btn.textContent = '聞いています（タップで終了）'; } });
+    const r = await SK.record({ maxMs: 30000, silenceMs: 1500, onStart: () => { btn.textContent = '聞いています（タップで終了）'; } }); if (!r.voiced) throw new Error('声が聞き取れませんでした。もう一度どうぞ。');
     btn.classList.remove('rec'); btn.textContent = 'マイクで話す';
     $('chgmsg').textContent = '読み取っています…';
     const j = await SK.post('/api/admin/voice', { audio_b64: r.b64, mime: r.mime });
@@ -369,7 +369,7 @@ async function micChange(btn) {
 async function finish(j) { closeSheet(); $('chgmsg').textContent = j.message || ''; if (j.result !== 'reask' && j.result !== 'needs_screen_approval') load(); }
 async function approve() { return approveCard(pending, opsHash); }
 async function confirmAns(t) { if (!pending) return; finish(await SK.post('/api/admin/confirm', { pending_id: pending, text: t })); }
-async function confirmVoice() { const r = await SK.record({ maxMs: 6000 }); finish(await SK.post('/api/admin/confirm', { pending_id: pending, audio_b64: r.b64, mime: r.mime })); }
+async function confirmVoice() { const r = await SK.record({ maxMs: 6000 }); if (!r.voiced) { $('chgmsg').textContent = '声が聞き取れませんでした。もう一度どうぞ。'; return; } finish(await SK.post('/api/admin/confirm', { pending_id: pending, audio_b64: r.b64, mime: r.mime })); }
 async function testAsk() {
   const j = await SK.post('/api/admin/test_ask', { text: $('tq').value });
   if (j.degraded) { $('tres').innerHTML = '<div class="q-card review"><b>' + esc(j.message) + '</b></div>'; return; }
