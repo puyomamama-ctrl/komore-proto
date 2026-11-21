@@ -500,29 +500,52 @@ def llm_json(system, user, model=None, store_id=None, purpose='', max_out=700):
     data = json.loads(m.group()) if m else {}
     return data, {'model': model, 'ms': round(ms), 'usage': usage, 'cost_usd': cost}
 
-def asr_terms(store_id=None, limit=80):
-    """音声認識に渡す固有名詞（店名、メニュー、料金プラン、予約経路の別名）。"""
-    words = ['Klook', 'Japan Ticket', 'ジャパンチケット', 'ジャパチケ', 'クルック', 'クルクル', 'クルクルス',
-             'YAVAY', 'YAVAY PLAN', 'ヤバイ', 'ヤバイプラン', 'それ以外']
+ASR_TERMS_MAX = 30
+# 聞き間違いの別表記（クルクル等）は答えの照合側（_KLOOK_VARS 等）で扱い、認識のヒントには入れない
+_ASR_SKIP = {'クルクル', 'クルクルス', 'くるっく', 'ヤバイ', 'ジャパン・チケット', 'japanticket'}
+
+def _asr_term_ok(w):
+    """認識ヒント向きの語か。長すぎる名前・一般語の別名（電話、いいえ等）は外す。"""
+    if not w or len(w) > 24 or w.lower() in {x.lower() for x in _ASR_SKIP}:
+        return False
+    return bool(re.search(r'[A-Za-z\u30a0-\u30ff\u4e00-\u9fff]', w)) and not re.fullmatch(r'[\u3040-\u309f]+', w)
+
+def _asr_name_parts(name, note=''):
+    """品名を認識ヒント向けの短い語に分ける。例: 'Dom Perignon ドン・ペリニヨン'→'ドン・ペリニヨン'、
+    'テーブル席 Aプラン'→'テーブル席','Aプラン'、'小腹が減ったら！ポテトチップス'→'ポテトチップス'。"""
+    n = re.split(r'\s*[（(]', str(name or ''))[0].strip()
+    n = re.split(r'[！!]', n)[-1].strip()
+    if not n:
+        return []
+    jp = re.search(r'[\u3040-\u30ff\u4e00-\u9fff].*$', n)
+    if re.match(r'[A-Za-z]', n) and jp and re.search(r'[A-Za-z]{3,}\s', n[:jp.start()]):
+        return [jp.group().strip()]          # 英語名＋カタカナ名 → カタカナ側
+    if not jp:                               # 英語だけ → 備考のカタカナ名があればそちら
+        nt = str(note or '').strip()
+        if nt and len(nt) <= 20 and re.fullmatch(r'[\u30a0-\u30ff・ー\s]+', nt):
+            return [nt]
+        return [n]
+    return [p for p in re.split(r'\s+', n) if p]
+
+def asr_terms(store_id=None, limit=ASR_TERMS_MAX):
+    """音声認識に渡す固有名詞（店名、料金プラン、メニュー）。30語以下・短い語を優先。"""
+    words = ['Klook', 'Japan Ticket', 'ジャパンチケット', 'クルック', 'YAVAY', 'YAVAY PLAN', 'それ以外']
     if store_id:
         try:
             d = store_data(store_id)
             nm = (d.get('store') or {}).get('name')
             if nm:
                 words.append(nm)
-            for tr in d.get('price_tiers') or list_tiers(store_id):
-                words.append(tr.get('name') or '')
-                words.extend(x for x in (tr.get('aliases') or '').split(',') if x.strip())
-            for r in (d.get('menu') or []) + (d.get('prices') or []):
-                words.append(r.get('name') or '')
+            for r in (d.get('prices') or []) + (d.get('menu') or []):
+                words.extend(_asr_name_parts(r.get('name'), r.get('note')))
         except Exception:
             pass
     seen, out = set(), []
     for w in words:
         w = str(w or '').strip()
-        if w and w.lower() not in seen:
+        if _asr_term_ok(w) and w.lower() not in seen:
             seen.add(w.lower()); out.append(w)
-        if len(out) >= limit:
+        if len(out) >= min(limit, ASR_TERMS_MAX):
             break
     return out
 

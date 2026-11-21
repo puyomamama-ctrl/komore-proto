@@ -3,36 +3,77 @@ const SK = {};
 SK.ctx = null;
 SK.ensureCtx = () => { if (!SK.ctx) SK.ctx = new (window.AudioContext || window.webkitAudioContext)(); if (SK.ctx.state === 'suspended') SK.ctx.resume(); return SK.ctx; };
 SK.pickMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
-SK.record = async ({ maxMs = 15000, silenceMs = 1600, onLevel } = {}) => {
+// マイクは一度開いたら使い回す（毎回開き直すと iPhone では話し始めが欠けやすい）
+SK.mic = null;
+SK.openMic = async () => {
   const ctx = SK.ensureCtx();
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+  const m = SK.mic;
+  if (m && m.stream.getAudioTracks().some(t => t.readyState === 'live')) return m;
+  if (m && m.opening) return m.opening;
+  const opening = (async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    const src = ctx.createMediaStreamSource(stream); const an = ctx.createAnalyser(); an.fftSize = 1024; src.connect(an);
+    const mic = { stream, src, an, buf: new Float32Array(an.fftSize), ring: [], recording: false };
+    // 録音していない間の音量を約2秒ぶん覚えておき、背景ノイズの基準にする
+    mic.timer = setInterval(() => { if (mic.recording) return; mic.ring.push(SK.rmsOf(mic)); if (mic.ring.length > 40) mic.ring.shift(); }, 50);
+    SK.mic = mic; return mic;
+  })();
+  SK.mic = { stream: new MediaStream(), opening };
+  try { return await opening; } catch (e) { SK.mic = null; throw e; }
+};
+SK.closeMic = () => {
+  const m = SK.mic; SK.mic = null;
+  if (!m || m.opening) return;
+  clearInterval(m.timer); try { m.src.disconnect(); } catch (e) {}
+  m.stream.getTracks().forEach(t => t.stop());
+};
+SK.rmsOf = mic => { mic.an.getFloatTimeDomainData(mic.buf); let s = 0; for (const v of mic.buf) s += v * v; return Math.sqrt(s / mic.buf.length); };
+SK.pct = (a, p) => { if (!a.length) return null; const b = [...a].sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * p))]; };
+// 話し声のしきい値。背景ノイズは「静かな側（下位20%/10%）」から測るので、話し始めの声をノイズ扱いしない
+SK.threshOf = floor => { const f = floor == null ? 0.008 : floor; return Math.min(Math.max(0.02, f * 2.5 + 0.012), Math.max(0.06, f * 1.6)); };
+// 録音（無音で自動停止）。onStart は実際に録音が始まった瞬間に呼ばれる
+SK.record = async ({ maxMs = 15000, silenceMs = 1600, onLevel, onStart } = {}) => {
+  const mic = await SK.openMic();
   const mime = SK.pickMime();
-  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+  const rec = new MediaRecorder(mic.stream, mime ? { mimeType: mime } : {});
   const chunks = []; rec.ondataavailable = e => e.data.size && chunks.push(e.data);
-  const src = ctx.createMediaStreamSource(stream); const an = ctx.createAnalyser(); an.fftSize = 1024; src.connect(an);
-  const buf = new Float32Array(an.fftSize);
-  let spoke = false, lastLoud = performance.now(), amb = 0, nAmb = 0; const t0 = performance.now();
+  const preFloor = mic.ring.length >= 5 ? SK.pct(mic.ring, 0.2) : null;
+  const levels = [];
+  let spoke = false, maxRms = 0, lastLoud = 0, t0 = 0;
   SK.stopRec = () => rec.state === 'recording' && rec.stop();
-  return new Promise(res => {
+  return new Promise((res, rej) => {
+    rec.onerror = e => { mic.recording = false; rej(e.error || new Error('録音エラー')); };
     rec.onstop = async () => {
-      stream.getTracks().forEach(t => t.stop()); src.disconnect();
+      mic.recording = false;
       const blob = new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' });
       const b64 = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result.split(',')[1]); fr.readAsDataURL(blob); });
-      res({ b64, mime: (blob.type || 'audio/webm').split(';')[0], ms: performance.now() - t0, endedAt: performance.now(), spoke });
+      const ms = performance.now() - t0;
+      const floor = preFloor ?? SK.pct(levels, 0.1);
+      // 判定に落ちても、0.5秒以上あって背景より明らかに大きい音があれば認識に送る
+      const voiced = spoke || (ms > 500 && maxRms > Math.max(0.012, (floor || 0) * 1.8));
+      res({ b64, mime: (blob.type || 'audio/webm').split(';')[0], ms, endedAt: performance.now(), spoke, voiced });
     };
+    let started = false;
+    const begin = () => {
+      if (started) return; started = true;
+      mic.recording = true; t0 = performance.now(); lastLoud = t0;
+      onStart && onStart();
+      const tick = () => {
+        if (rec.state !== 'recording') return;
+        const rms = SK.rmsOf(mic); levels.push(rms); if (rms > maxRms) maxRms = rms;
+        onLevel && onLevel(rms);
+        const now = performance.now();
+        let floor = preFloor;
+        if (levels.length >= 15) { const p = SK.pct(levels, 0.1); floor = floor == null ? p : Math.min(floor, p); }
+        if (rms > SK.threshOf(floor)) { spoke = true; lastLoud = now; }
+        if ((spoke && now - lastLoud > silenceMs) || now - t0 > maxMs) return rec.stop();
+        requestAnimationFrame(tick);
+      };
+      tick();
+    };
+    rec.onstart = begin;
     rec.start(200);
-    const tick = () => {
-      if (rec.state !== 'recording') return;
-      an.getFloatTimeDomainData(buf); let s = 0; for (const v of buf) s += v * v; const rms = Math.sqrt(s / buf.length);
-      onLevel && onLevel(rms);
-      const now = performance.now();
-      if (now - t0 < 280) { amb += rms; nAmb += 1; requestAnimationFrame(tick); return; }  // 最初の一瞬は周囲音として見る
-      const thresh = Math.max(0.03, (nAmb ? amb / nAmb : 0) * 2.5 + 0.012);
-      if (rms > thresh) { spoke = true; lastLoud = now; }
-      if ((spoke && now - lastLoud > silenceMs) || now - t0 > maxMs) return rec.stop();
-      requestAnimationFrame(tick);
-    };
-    tick();
+    setTimeout(() => { if (rec.state === 'recording') begin(); }, 600);  // onstart が来ないブラウザ向けの保険
   });
 };
 SK.sources = [];

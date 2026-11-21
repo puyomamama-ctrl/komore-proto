@@ -75,21 +75,21 @@ async function checkStatus() { try { const j = await SK.get(`/api/k/${slug}/stat
 async function init() { try { await SK.get('/api/me'); checkStatus(); const j = await SK.get(`/api/k/${slug}/info`); $('name').textContent = j.name || 'AI受付'; $('sbname').textContent = j.name || ''; applyTheme(j.theme); } catch (e) { needLogin(); } }
 init();
 function touch() { clearTimeout(idleTimer); idleTimer = setTimeout(toStandby, IDLE_MS); }
-function toStandby() { hideEnd(); SK.stopAudio(); speechSynthesis.cancel(); $('q').textContent = ''; $('a').innerHTML = 'ボタンを押して話しかけてください'; $('a').style.fontSize = ''; $('dbg').textContent = ''; $('standby').style.display = 'flex'; setMic('idle'); }
-$('standby').onclick = () => { SK.ensureCtx(); $('standby').style.display = 'none'; touch(); };
-function setMic(s) { state = s; const m = $('mic'); m.className = 'k-mic ' + ({ rec: 'rec', busy: 'busy', speak: 'speak' }[s] || ''); m.textContent = { idle: '話す', rec: '聞いています…\n(タップで終了)', busy: '考えています…', speak: '話しています\n(タップで割り込み)' }[s]; }
+function toStandby() { hideEnd(); SK.stopAudio(); SK.closeMic && SK.closeMic(); speechSynthesis.cancel(); $('q').textContent = ''; $('a').innerHTML = 'ボタンを押して話しかけてください'; $('a').style.fontSize = ''; $('dbg').textContent = ''; $('standby').style.display = 'flex'; setMic('idle'); }
+$('standby').onclick = () => { SK.ensureCtx(); if (STT !== 'browser') SK.openMic().catch(() => {}); $('standby').style.display = 'none'; touch(); };
+function setMic(s) { state = s; const m = $('mic'); m.className = 'k-mic ' + ({ rec: 'rec', busy: 'busy', speak: 'speak' }[s] || ''); m.textContent = { idle: '話す', prep: '準備中…', rec: '聞いています…\n(タップで終了)', busy: '考えています…', speak: '話しています\n(タップで割り込み)' }[s]; }
 $('staff').onclick = () => { touch(); if ($('cards').style.display === 'none') { $('a').textContent = 'スタッフをお呼びしています。少々お待ちください。'; fitAnswer(); } SK.post(`/api/k/${slug}/staff`, { session }).catch(needLogin); };
 function browserSTT() { return new Promise((res, rej) => { const R = window.SpeechRecognition || window.webkitSpeechRecognition; if (!R) return rej(new Error('このブラウザは音声認識非対応')); const r = new R(); r.lang = P.get('lang') || 'ja-JP'; r.onresult = e => res(e.results[0][0].transcript); r.onerror = e => rej(new Error(e.error)); r.onend = () => res(''); r.start(); SK.stopRec = () => r.stop(); }); }
 $('mic').onclick = async () => {
   touch();
   if (state === 'rec') { SK.stopRec && SK.stopRec(); return; }
-  if (state === 'busy') return;
+  if (state === 'busy' || state === 'prep') return;
   if (state === 'speak') { SK.stopAudio(); speechSynthesis.cancel(); }   // 割り込み
-  setMic('rec'); $('q').textContent = ''; $('a').textContent = '';
+  setMic(STT === 'browser' ? 'rec' : 'prep'); $('q').textContent = ''; $('a').textContent = '';
   try {
     let body = { session, mode: 'kiosk' }, tEnd;
     if (STT === 'browser') { const text = await browserSTT(); tEnd = performance.now(); body.text = text; body.client_stt = true; }
-    else { const r = await SK.record(); tEnd = r.endedAt; if (!r.spoke) { setMic('idle'); $('a').textContent = '聞き取れませんでした。もう一度どうぞ。'; fitAnswer(); return; } body.audio_b64 = r.b64; body.mime = r.mime; }
+    else { const r = await SK.record({ onStart: () => setMic('rec') }); tEnd = r.endedAt; if (!r.voiced) { setMic('idle'); $('a').textContent = '聞き取れませんでした。もう一度どうぞ。'; fitAnswer(); return; } body.audio_b64 = r.b64; body.mime = r.mime; }
     setMic('busy');
     const j = await SK.post(`/api/k/${slug}/ask`, body);
     if (j.degraded) return showDegraded(j);
