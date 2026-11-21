@@ -211,7 +211,7 @@ h2 .muted,section h2 .muted{font-weight:600;font-size:11px;margin-left:4px;color
 .change{font-size:15px;line-height:1.6;margin:0 0 6px;}
 .change .before{color:var(--muted);text-decoration:line-through;}
 .change .arrow{color:var(--muted);margin:0 4px;text-decoration:none;font-weight:700;}
-.change .after{color:var(--ok-ink);font-weight:800;text-decoration:none;}
+.change .after{color:var(--ok-ink);font-weight:800;text-decoration:none;white-space:nowrap;}
 .when{font-size:11px;color:var(--muted);margin:8px 0 14px;}
 .actions{display:flex;gap:8px;}
 .btn{
@@ -258,3 +258,146 @@ h2 .muted,section h2 .muted{font-weight:600;font-size:11px;margin-left:4px;color
 #app > .a-body > section#t-test,
 #app > .a-body > section#t-voice,
 #app > .a-body > section#t-q2{overflow:auto;}
+
+/* ===== 店長画面（忙しい店の人向け。横スクロールなし・表なし） ===== */
+html, body { overflow-x: hidden; }
+#app > .a-body > section,
+#t-home, #t-q, #t-cards, #t-data, #t-more, #t-test, #t-hist, #t-acct, #t-usage {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 80px;
+}
+#login { overflow-x: hidden; overflow-y: auto; }
+.a-body, #app > .a-body { overflow-x: hidden; }
+.row, .item-row, .q-card, .conv-row, .acct-card, .hist-row, .stat, .cta, .composer, .import-btns, .theme-opt {
+  max-width: 100%;
+  min-width: 0;
+}
+input, textarea, select, button, a { max-width: 100%; }
+textarea, .fullin, #chg, #vtext, #tq, #weburl, #oa-box, .draft textarea {
+  width: 100%; box-sizing: border-box; font-family: inherit; font-size: 16px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink);
+}
+.composer { margin: 0 0 14px; }
+.composer .mic-big {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; height: 64px; margin-top: 10px;
+  background: var(--mic); color: var(--mic-ink); border: 0; border-radius: 18px;
+  font-family: inherit; font-size: 18px; font-weight: 800; box-shadow: 0 8px 18px var(--mic-shadow);
+}
+.composer .mic-big.rec { background: var(--danger-ink); color: #fff; }
+.subbox { margin-top: 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--wash); padding: 8px 10px; }
+.subbox summary { font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; }
+.subbox .inner { margin-top: 8px; }
+
+/* ホーム：今日の数字＋やること1つ */
+.today { display: flex; gap: 8px; margin: 0 0 16px; }
+.stat {
+  flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  padding: 12px 8px; text-align: center; box-shadow: var(--soft);
+}
+.stat .n { display: block; font-size: 28px; font-weight: 800; color: var(--accent-dark); line-height: 1.1; letter-spacing: .02em; }
+.stat .n.warn { color: var(--danger-ink); }
+.stat .l { display: block; margin-top: 4px; font-size: 11px; font-weight: 700; color: var(--muted); line-height: 1.3; }
+.cta {
+  display: block; width: 100%; min-height: 64px; padding: 14px 16px; margin: 0 0 10px;
+  background: var(--pri); color: var(--pri-ink); border: 0; border-radius: 18px;
+  font-family: inherit; font-size: 17px; font-weight: 800; text-align: center; line-height: 1.35;
+  box-shadow: var(--soft);
+}
+.cta.sub { background: var(--chip); color: var(--ink); border: 1px solid var(--line); }
+.okmsg { background: var(--ok-bg); color: var(--ok-ink); border-radius: 16px; padding: 16px; font-weight: 700; text-align: center; }
+
+/* i アイコン */
+.hrow { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; }
+.hrow h2 { margin: 0; flex: 1; }
+.info-i {
+  flex: 0 0 28px; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--chip); color: var(--ink); font-size: 13px; font-weight: 800; font-family: inherit; padding: 0; line-height: 28px;
+}
+.tip {
+  display: none; background: var(--wash); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 12px; margin: 0 0 10px; font-size: 13px; color: var(--ink); line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.tip.on { display: block; }
+
+/* 質問・会話の縦カード */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.filters button {
+  border-radius: 999px; padding: 6px 12px; border: 0; background: var(--chip); color: var(--ink);
+  font-size: 12px; font-weight: 700; font-family: inherit;
+}
+.filters button.on { background: var(--tab-on); color: var(--tab-on-ink); }
+.q-card, .conv-row, .item-row, .acct-card, .hist-row, .code-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 12px; margin: 0 0 8px; overflow: hidden; overflow-wrap: anywhere;
+}
+.q-card.unanswered { border-left: 4px solid var(--danger-ink); background: var(--danger-bg); }
+.q-card.review { border-left: 4px solid var(--warn-ink); }
+.q-card.answered { border-left: 4px solid var(--ok-ink); }
+.q-card .ttl { font-size: 15px; font-weight: 800; margin: 0 0 6px; line-height: 1.4; }
+.q-card .meta, .conv-row .meta, .item-row .sub, .muted { overflow-wrap: anywhere; }
+.ai-ans { background: var(--wash); border-radius: 10px; padding: 8px 10px; margin: 6px 0 8px; font-size: 14px; line-height: 1.55; }
+.rowbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+.rowbtns .pri, .btn-speak {
+  flex: 1; min-height: 44px; border: 0; border-radius: 12px; background: var(--pri); color: var(--pri-ink);
+  font-family: inherit; font-size: 15px; font-weight: 800;
+}
+.rowbtns button, .btn-fix {
+  flex: 1; min-height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink);
+  font-family: inherit; font-size: 15px; font-weight: 800;
+}
+.badge { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 8px; margin: 0 4px 4px 0; }
+.sec-label { font-size: 13px; font-weight: 800; margin: 16px 0 8px; color: var(--muted); }
+
+/* お店：取り込みボタンと1品1行 */
+.import-btns { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; }
+.import-btns button, .import-btns label.ibtn {
+  display: block; width: 100%; min-height: 52px; line-height: 1.3; padding: 14px 12px;
+  background: var(--pri); color: var(--pri-ink); border: 0; border-radius: 16px;
+  font-family: inherit; font-size: 16px; font-weight: 800; text-align: center; box-sizing: border-box;
+}
+.import-btns button.alt, .import-btns label.ibtn.alt { background: var(--chip); color: var(--ink); border: 1px solid var(--line); }
+.item-row {
+  display: flex; align-items: center; gap: 8px; padding: 12px 10px; cursor: pointer;
+}
+.item-row .body { flex: 1; min-width: 0; }
+.item-row .name { font-size: 15px; font-weight: 800; line-height: 1.35; }
+.item-row .price { font-weight: 800; color: var(--accent-dark); white-space: nowrap; flex: 0 0 auto; }
+.item-row .kind { font-size: 11px; font-weight: 700; color: var(--muted); margin-left: 4px; }
+.item-row .chev { color: var(--muted); flex: 0 0 16px; font-weight: 800; }
+.list-h { font-size: 13px; font-weight: 800; margin: 14px 0 6px; }
+
+/* シート（編集・説明） */
+.sheet {
+  position: fixed; inset: 0; background: rgba(20,10,14,.45); z-index: 8;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sheet.hide { display: none !important; }
+.sheet-card {
+  background: var(--card); color: var(--ink); width: 100%; max-width: 390px;
+  max-height: 86%; overflow-x: hidden; overflow-y: auto;
+  border-radius: 20px 20px 0 0; padding: 16px 14px 24px; box-shadow: var(--shadow-strong);
+}
+.sheet-card h3 { margin: 0 0 12px; font-size: 17px; }
+.field { margin: 0 0 10px; }
+.field label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin: 0 0 4px; }
+.danger-link { display: block; margin-top: 16px; background: none; border: 0; color: var(--danger-ink); font-size: 13px; font-weight: 700; font-family: inherit; padding: 8px 0; }
+.fabmic {
+  position: absolute; right: 14px; bottom: 76px; z-index: 5;
+  width: 56px; height: 56px; border-radius: 50%; border: 0;
+  background: var(--mic); color: var(--mic-ink); font-size: 22px;
+  box-shadow: 0 8px 18px var(--mic-shadow); font-family: inherit;
+}
+.fabmic.rec { background: var(--danger-ink); color: #fff; }
+.fabmic.hide, #t-cards ~ .no { }
+#app.tab-cards .fabmic { display: none; }
+
+.preview { background: var(--ok-bg); border-radius: 14px; padding: 10px 12px; margin: 0 0 10px; overflow-wrap: anywhere; }
+.preview li { margin: 0 0 4px; }
+.login-box input { width: 100%; margin: 6px 0; box-sizing: border-box; }
+.tabbar .tab { font-size: 10px; padding: 0 2px; line-height: 1.15; text-align: center; }
+#login details { font-size: 13px; }
+.when b { overflow-wrap: anywhere; }

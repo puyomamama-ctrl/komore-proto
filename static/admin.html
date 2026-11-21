@@ -5,109 +5,164 @@
 <header class="a-header"><b>店長モード</b><span id="who" class="who"></span></header>
 <section id="login">
   <h2>ログイン</h2><div id="authbox"></div>
-  <details style="margin-top:10px"><summary>新しい店舗を作る（運営用。このサーバーでは既定で無効：seed_demo.py で作成します）</summary>
-    店名 <input id="nname"> 店舗ID <input id="nslug" placeholder="英小文字" size="10"> 業種 <input id="ncat" size="8"> オーナーのパスワード(8文字以上) <input id="npw" type="password" size="14">
+  <details id="newstore" style="margin-top:10px"><summary>新しいお店を作る（運営用。このサーバーでは既定で無効）</summary>
+    店名 <input id="nname"> お店のID <input id="nslug" placeholder="英小文字" size="10"> 業種 <input id="ncat" size="8"> オーナーのパスワード(8文字以上) <input id="npw" type="password" size="14">
     <button onclick="createStore()">作成</button></details>
   <div id="lmsg" class="muted"></div>
 </section>
 <div id="app" class="hide">
   <div class="a-body">
-  <section id="t-q"><div id="growth"></div></section>
-  <section id="t-q2"><h2>お客様の質問 <span class="muted" id="qupd"></span></h2>
-    <div class="muted">同じ内容の質問はまとめて件数で表示します。全部を確認する必要はありません。「未回答」と「要確認」だけ見てください（5秒ごとに自動更新）。</div>
-    <div class="qtabs" style="margin:8px 0"><button data-s="unanswered" onclick="qtab('unanswered')">未回答 <span id="c-unanswered">0</span></button><button data-s="review" onclick="qtab('review')">要確認 <span id="c-review">0</span></button><button data-s="answered" onclick="qtab('answered')">回答済み <span id="c-answered">0</span></button></div>
-    <div id="qhelp" class="muted"></div><div id="qlist"></div></section>
-  <section id="t-cards" class="hide"><h2>確認カード（承認するまでお客様への回答には使いません）</h2>
-    <div class="pager" id="pager" style="display:none"><button type="button" class="navbtn" onclick="cardNav(-1)">前</button><span class="pos" id="cardpos">1/1</span><button type="button" class="navbtn" onclick="cardNav(1)">次</button></div>
-    <details style="margin-bottom:8px"><summary><b>カードを作る（文字・区分・写真）</b></summary>
-    <div style="margin-bottom:8px">変更を伝える（例:「今日からハイボール700円」「12月1日から日曜も営業 18時〜23時」）<br>
-      <input id="chg" size="34" placeholder="文字で入力、または🎤"> <button id="chgmic" onclick="stt($('chg'), this)">🎤</button> <button class="pri" onclick="sendChange()">カードを作る</button>
-      <div class="muted">🎤 はブラウザ標準の音声入力（無料）です。話した内容は文字になって入力欄に入り、送る前に直せます。</div><div id="chgmsg" class="muted"></div></div>
-    <details style="margin-bottom:8px"><summary><b>料金の区分（二重価格）を追加・編集</b></summary>
-      <div class="muted">例：予約経路で料金が違う店。区分があると、料金を聞かれたときにAIが先に「どちらでのご予約ですか？」と1回だけ聞き返します。区分ごとの料金は「変更を伝える」欄で（例:「Klook経由のテーブル席Aプランは4,500円」）。</div>
-      区分名 <input id="tiername" size="16" placeholder="Japan Ticket/Klook"> お客様の言い方 <input id="tieral" size="22" placeholder="klook, ジャパンチケット"> <button class="pri" onclick="proposeTier()">確認カードを作る</button>
-      <div id="tiers" class="muted"></div></details>
-    <details style="margin-bottom:8px" id="photobox"><summary><b>📷 写真から取り込む（メニュー表・料金表・貼り紙）</b></summary>
-      <div class="muted">写真の文字をAIが読み取り、全部の項目を確認カードにします。<b>承認するまでお客様への回答には使いません。</b>営業時間・営業日・支払い方法は1件ずつ「要確認」になります。写真そのものは保存しません。</div>
-      <input type="file" id="photo" accept="image/*" capture="environment"> <button class="pri" onclick="sendPhoto()">読み取ってカードを作る</button>
-      <div id="photomsg" class="muted"></div></details>
-    </details>
-    <div id="cardlist"></div><h3 style="font-size:14px">開始日を待っている変更</h3><div id="schedlist" class="muted"></div></section>
-  <section id="t-voice" class="hide"><h2>話して登録・変更</h2>
-    <div class="muted">例:「うちは60分3,000円、90分4,500円。営業時間は朝5時まで」</div>
-    <button id="vrec" class="pri" onclick="voiceRec()">🎤 話す</button> または <input id="vtext" size="30" placeholder="文字でも可"> <button onclick="voiceText()">送る</button>
-    <div id="vtr" class="muted"></div>
-    <div id="confirm" class="hide"><div id="ctext"></div><div id="cwarn" style="color:#b45309;font-weight:700;margin-top:6px"></div>
-      <div id="cimp" class="hide" style="margin-top:8px;background:#fee2e2;padding:8px;border-radius:8px"><b>重要な変更です</b>（料金・営業時間・削除など）。声の「はい」だけでは保存しません。内容を確認し、パスワードを入力して承認してください。<br>
-        パスワード <input id="apw" type="password" size="14" autocomplete="current-password"> <button class="pri" onclick="approve()">承認して保存</button></div>
-      <div style="margin-top:8px"><button id="cyes" class="pri" onclick="confirmAns('はい')">はい（保存）</button> <button onclick="confirmAns('いいえ')">いいえ（取り消し）</button> <button id="crec" onclick="confirmVoice()">🎤 声で答える</button></div></div>
-    <div id="vres"></div>
+  <section id="t-home">
+    <div class="hrow"><h2>今日のようす</h2><button type="button" class="info-i" onclick="toggleTip('home')">i</button></div>
+    <div id="tip-home" class="tip">今日の接客の数と、店長が手を入れる必要がある数です。下の大きいボタンを押すと、今やることが開きます。</div>
+    <div id="today"></div>
   </section>
-  <section id="t-data" class="hide"><h2>店舗情報（手入力で修正）</h2><div id="tables"></div></section>
-  <section id="t-test" class="hide"><h2>回答テスト（接客と同じ回答ロジック）</h2>
-    <input id="tq" size="34" placeholder="90分いくら？"> <button class="pri" onclick="testAsk()">質問</button><div id="tres"></div>
-    <h2 style="margin-top:12px">AIが見ている店舗データ</h2><div id="facts" class="muted"></div></section>
-  <section id="t-logs" class="hide"><h2>会話ログ</h2><div id="stats"></div><div id="convs"></div></section>
-  <section id="t-hist" class="hide"><h2>変更履歴・操作記録</h2><div id="hist"></div><h3 style="font-size:14px;margin-top:12px">操作の監査ログ（追記専用・改ざん検知つき。会話本文・パスワードは記録しません）</h3><div id="audit" class="muted"></div></section>
-  <section id="t-usage" class="hide"><h2>API利用状況・上限（費用ガード）</h2><div id="usage"></div></section>
-  <section id="t-acct" class="hide"><h2>アカウント・端末の管理（オーナー専用）</h2>
-    <div id="bill" style="background:#ecfeff;padding:8px;border-radius:8px"></div>
-    <h3 style="font-size:14px">登録コードの発行（1回だけ使える・期限付き）</h3>
-    名前メモ <input id="clabel" size="10" placeholder="例: 山田"> 有効 <select id="cttl"><option value="15">15分</option><option value="60">1時間</option><option value="1440" selected>24時間</option></select>
-    <button class="pri" onclick="issueCode()">コードを発行</button><div id="newcode"></div>
-    <h3 style="font-size:14px">登録済みアカウント（安全管理用。料金とは無関係）</h3><div id="accts"></div>
-    <h3 style="font-size:14px">発行した登録コード</h3><div id="codes"></div>
-    <h3 style="font-size:14px">操作履歴</h3><div id="aev" class="muted"></div></section>
+  <section id="t-q" class="hide">
+    <div class="hrow"><h2>お客様の質問</h2><button type="button" class="info-i" onclick="toggleTip('q')">i</button></div>
+    <div id="tip-q" class="tip">似た質問は1つにまとめて表示します。答えられなかったものから、「答えを話す」か「直す」で登録すると、次のお客様から使われます。</div>
+    <div class="filters" id="qtabs">
+      <button data-s="unanswered" onclick="qtab('unanswered')">答えられなかった <span id="c-unanswered">0</span></button>
+      <button data-s="review" onclick="qtab('review')">要確認 <span id="c-review">0</span></button>
+      <button data-s="answered" onclick="qtab('answered')">答えられた <span id="c-answered">0</span></button>
+    </div>
+    <div id="qlist"></div>
+    <div class="sec-label">最近の会話</div>
+    <div id="convs"></div>
+  </section>
+  <section id="t-cards" class="hide">
+    <div class="hrow"><h2>変更・追加</h2><button type="button" class="info-i" onclick="toggleTip('chg')">i</button></div>
+    <div id="tip-chg" class="tip">話すか書くと、変更案が出ます。「OK」を押すまでお客様への回答には使いません。料金・営業時間・支払い方法は、確認するまで使いません。</div>
+    <div id="pendingbox"></div>
+    <div class="pager" id="pager" style="display:none"><button type="button" class="navbtn" onclick="cardNav(-1)">前</button><span class="pos" id="cardpos">1/1</span><button type="button" class="navbtn" onclick="cardNav(1)">次</button></div>
+    <div id="cardlist"></div>
+    <div class="composer">
+      <textarea id="chg" rows="3" placeholder="例：今日からハイボール700円"></textarea>
+      <button type="button" id="chgmic" class="mic-big" onclick="micChange(this)">マイクで話す</button>
+      <div style="margin-top:8px"><button type="button" class="pri cta sub" onclick="sendChange()">この内容で変更案を作る</button></div>
+      <div id="chgmsg" class="muted"></div>
+    </div>
+    <details class="subbox"><summary>料金の区分（予約の経路などで値段が違うとき）</summary>
+      <div class="inner">
+        <div class="field"><label>区分の名前</label><input id="tiername" class="fullin" placeholder="例：Klook"></div>
+        <div class="field"><label>お客様の言い方</label><input id="tieral" class="fullin" placeholder="例：くるっく、クルック"></div>
+        <button type="button" class="pri" onclick="proposeTier()">変更案を作る</button>
+        <div id="tiers" class="muted" style="margin-top:8px"></div>
+      </div>
+    </details>
+    <details class="subbox" id="photobox"><summary>写真から取り込む</summary>
+      <div class="inner">
+        <input type="file" id="photo" accept="image/*" capture="environment">
+        <button type="button" class="pri" style="margin-top:8px" onclick="sendPhoto()">読み取る</button>
+        <div id="photomsg" class="muted"></div>
+      </div>
+    </details>
+    <div class="hrow" style="margin-top:16px"><h2 style="font-size:13px">日付を決めて反映する変更（予約）</h2><button type="button" class="info-i" onclick="toggleTip('sched')">i</button></div>
+    <div id="tip-sched" class="tip">例えば「12月1日から700円」と決めた変更です。その日までは、今の値段で答えます。当日になったら自動で新しい内容になります。</div>
+    <div id="schedlist" class="muted"></div>
+  </section>
+  <section id="t-data" class="hide">
+    <div class="hrow"><h2>お店の情報</h2><button type="button" class="info-i" onclick="toggleTip('data')">i</button></div>
+    <div id="tip-data" class="tip">上のボタンから読み取った内容は、一覧で確認して「OK」を押すまでお客様への回答には使いません。営業時間や支払い方法は、確認するまで使いません。</div>
+    <div class="import-btns">
+      <button type="button" onclick="openWeb()">URLを貼る</button>
+      <label class="ibtn alt">写真を撮る<input type="file" id="photo2" accept="image/*" capture="environment" style="display:none" onchange="sendPhotoFrom('photo2')"></label>
+      <button type="button" class="alt" onclick="openSpeak()">話す・書く</button>
+    </div>
+    <div id="importprev"></div>
+    <div id="conflicts"></div>
+    <div id="tables"></div>
+  </section>
   <section id="t-more" class="hide">
     <h2>画面のテーマ</h2>
-    <div class="muted" style="margin-bottom:8px">このお店の接客画面と管理画面に使います。店ごとに保存されます（既定は桜ミルクティー）。</div>
     <div id="theme-list"></div>
     <div id="thememsg" class="muted"></div>
     <div class="more-links">
-      <button type="button" onclick="tab('voice')">音声で登録</button>
-      <button type="button" onclick="tab('test')">回答テスト</button>
-      <button type="button" onclick="tab('logs')">会話・未回答</button>
-      <button type="button" onclick="tab('hist')">変更履歴</button>
-      <button type="button" onclick="tab('acct')">アカウント・端末</button>
-      <button type="button" onclick="tab('usage')">利用状況・上限</button>
       <a id="kiosk" target="_blank">接客画面を開く</a>
+      <button type="button" onclick="tab('test')">回答を試す</button>
+      <button type="button" onclick="tab('hist')">変更の記録</button>
+      <button type="button" onclick="tab('acct')">アカウント・端末</button>
+      <button type="button" onclick="tab('usage')">利用の状況</button>
       <button type="button" onclick="logout()">ログアウト</button>
     </div>
   </section>
+  <section id="t-test" class="hide">
+    <div class="hrow"><h2>回答を試す</h2><button type="button" class="info-i" onclick="toggleTip('test')">i</button></div>
+    <div id="tip-test" class="tip">接客と同じ仕組みで、試しに質問できます。お客様の画面には出ません。</div>
+    <textarea id="tq" rows="2" placeholder="例：90分いくら？"></textarea>
+    <button type="button" class="cta" style="margin-top:8px" onclick="testAsk()">質問する</button>
+    <div id="tres"></div>
+  </section>
+  <section id="t-hist" class="hide">
+    <h2>変更の記録</h2>
+    <div id="hist"></div>
+    <div class="sec-label">操作の記録</div>
+    <div id="audit" class="muted"></div>
+  </section>
+  <section id="t-acct" class="hide">
+    <h2>アカウント・端末</h2>
+    <div id="bill"></div>
+    <div class="sec-label">登録コードを発行する</div>
+    <div class="field"><label>名前のメモ</label><input id="clabel" class="fullin" placeholder="例：山田"></div>
+    <div class="field"><label>有効な時間</label>
+      <select id="cttl" class="fullin"><option value="15">15分</option><option value="60">1時間</option><option value="1440" selected>24時間</option></select>
+    </div>
+    <button type="button" class="cta" onclick="issueCode()">コードを発行</button>
+    <div id="newcode"></div>
+    <div class="sec-label">登録済みのアカウント</div>
+    <div id="accts"></div>
+    <div class="sec-label">発行した登録コード</div>
+    <div id="codes"></div>
+    <div class="sec-label">操作の記録</div>
+    <div id="aev" class="muted"></div>
+  </section>
+  <section id="t-usage" class="hide">
+    <h2>利用の状況</h2>
+    <div id="usage"></div>
+  </section>
   </div>
+  <button type="button" class="fabmic" id="fabmic" onclick="fabRec(this)" title="話す">🎤</button>
   <nav class="tabbar">
     <button type="button" class="tab on" data-t="home" onclick="tab('home')"><span class="ico">⌂</span>ホーム</button>
-    <button type="button" class="tab" data-t="cards" onclick="tab('cards')"><span class="ico">☑</span>確認<span id="ncards" class="cnt">0</span></button>
     <button type="button" class="tab" data-t="q" onclick="tab('q')"><span class="ico">?</span>質問</button>
+    <button type="button" class="tab" data-t="cards" onclick="tab('cards')"><span class="ico">✎</span>変更・追加<span id="ncards" class="cnt">0</span></button>
     <button type="button" class="tab" data-t="data" onclick="tab('data')"><span class="ico">店</span>お店</button>
     <button type="button" class="tab" data-t="more" onclick="tab('more')"><span class="ico">…</span>その他</button>
   </nav>
 </div>
+<div id="sheet" class="sheet hide" onclick="if(event.target.id==='sheet')closeSheet()"><div class="sheet-card" id="sheetbody"></div></div>
 <script src="/static/common.js"></script>
 <script>
-const $ = id => document.getElementById(id); let ST = null, pending = null, opsHash = null;
-const COLS = { hours: ['weekday(0=月..6=日)', 'open', 'close', 'closed', 'note', 'open2(2枠目の開店)', 'close2(2枠目の閉店)'], special_hours: ['date_from', 'date_to', 'open', 'close', 'closed', 'note'], prices: ['name', 'amount_yen', 'note', 'valid_from', 'valid_to', 'weekdays', 'tier(料金の区分。空＝全区分共通)'], menu: ['name', 'price_yen', 'category', 'note'], payments: ['method'], faqs: ['topic', 'answer'], profile: ['slot(一人客/女性一人/デート/子連れ/団体/誕生日・記念日/おすすめ/混む時間/外国語対応)', 'answer'], price_tiers: ['name', 'aliases(お客様の言い方。カンマ区切り)'] };
-const JA = { hours: '曜日別営業時間', special_hours: '臨時休業・特別営業', prices: '料金（期間限定は日付）', menu: 'メニュー', payments: '支払い方法', faqs: 'その他の案内', profile: '店のキャラ（一人客・デート・おすすめ等）', price_tiers: '料金の区分（二重価格：例 予約経路 Japan Ticket/Klook とそれ以外）' };
+const $ = id => document.getElementById(id); let ST = null, pending = null, opsHash = null, STORE = null;
+const COLS = { hours: ['weekday','open','close','closed','note','open2','close2'], special_hours: ['date_from','date_to','open','close','closed','note'], prices: ['name','amount_yen','note','valid_from','valid_to','weekdays','tier'], menu: ['name','price_yen','category','note'], payments: ['method'], faqs: ['topic','answer'], profile: ['slot','answer'], price_tiers: ['name','aliases'] };
+const LAB = { hours: {weekday:'曜日',open:'開店',close:'閉店',closed:'定休日',note:'メモ',open2:'2枠目の開店',close2:'2枠目の閉店'}, special_hours: {date_from:'開始日',date_to:'終了日',open:'開店',close:'閉店',closed:'休業',note:'メモ'}, prices: {name:'名前',amount_yen:'金額（円）',note:'メモ',valid_from:'いつから',valid_to:'いつまで',weekdays:'曜日',tier:'料金の区分'}, menu: {name:'名前',price_yen:'値段（円）',category:'種類',note:'メモ'}, payments: {method:'支払い方法'}, faqs: {topic:'見出し',answer:'案内文'}, profile: {slot:'種類',answer:'内容'}, price_tiers: {name:'区分の名前',aliases:'お客様の言い方'} };
+const JA = { hours: '営業時間', special_hours: '臨時の営業・休業', prices: '料金', menu: 'メニュー', payments: '支払い方法', faqs: 'その他の案内', profile: 'お店の案内', price_tiers: '料金の区分' };
+const WD = ['月','火','水','木','金','土','日'];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-function onAuth(j) { if (j.account.role !== 'owner') { SK.post('/api/logout', {}); $('lmsg').innerHTML = `店員アカウントです。店舗情報の変更はオーナーのみ。<a href="/k/${j.store.slug}">接客画面</a>はこの端末でログイン済みなら使えます（再ログインが必要な場合あり）。`; return; } start(j.store, j.account); }
+function yen(n) { if (n == null || n === '') return ''; const x = Number(n); return Number.isFinite(x) ? x.toLocaleString('ja-JP') + '円' : esc(n); }
+function statusJa(s) {
+  s = String(s || '');
+  if (s.includes('clarify')) return '聞き返し';
+  if (s.startsWith('answered')) return s.includes('partial') ? '一部だけ回答' : '答えられた';
+  if (s.startsWith('fallback') || !s) return '答えられなかった';
+  return 'その他';
+}
+function toggleTip(k) { const el = $('tip-' + k); if (el) el.classList.toggle('on'); }
+function onAuth(j) { if (j.account.role !== 'owner') { SK.post('/api/logout', {}); $('lmsg').innerHTML = '店員アカウントです。お店の情報の変更はオーナーのみ。<a href="/k/' + esc(j.store.slug) + '">接客画面</a>はこの端末でログイン済みなら使えます。'; return; } start(j.store, j.account); }
 const ADMIN_SLUG = (typeof SK.adminSlug === 'function' && SK.adminSlug()) || '';
 if (ADMIN_SLUG) {
-  document.title = '店長モード（' + ADMIN_SLUG + '）';
-  const hb = document.querySelector('.a-header b');
-  if (hb) hb.textContent = '店長モード（' + ADMIN_SLUG + '）';
-  const cr = document.querySelector('#login details');
-  if (cr) cr.classList.add('hide');
+  document.title = '店長モード';
+  const cr = $('newstore'); if (cr) cr.classList.add('hide');
 }
 function onAuthGate(j) {
   if (ADMIN_SLUG && j.store && j.store.slug !== ADMIN_SLUG) {
     SK.post('/api/logout', {});
-    $('lmsg').textContent = 'この画面は「' + ADMIN_SLUG + '」の店長用です。店舗が違います。';
+    $('lmsg').textContent = 'この画面は別のお店の店長用です。';
     return;
   }
   onAuth(j);
 }
 SK.authBox($('authbox'), { slug: ADMIN_SLUG, lockSlug: !!ADMIN_SLUG, onDone: onAuthGate });
-async function createStore() { try { await SK.post('/api/stores', { name: $('nname').value, slug: $('nslug').value.trim(), category: $('ncat').value, owner_password: $('npw').value }); $('lmsg').textContent = '作成しました。店舗IDとパスワードでログインしてください'; } catch (e) { $('lmsg').textContent = e.message; } }
+async function createStore() { try { await SK.post('/api/stores', { name: $('nname').value, slug: $('nslug').value.trim(), category: $('ncat').value, owner_password: $('npw').value }); $('lmsg').textContent = '作成しました。お店のIDとパスワードでログインしてください'; } catch (e) { $('lmsg').textContent = e.message; } }
 async function logout() { await SK.post('/api/logout', {}); location.reload(); }
 function applyTheme(th) { document.documentElement.dataset.theme = (th === 'mint' || th === 'dark') ? th : 'sakura'; }
 const THEME_META = {
@@ -119,235 +174,368 @@ function renderThemePicker(cur) {
   cur = THEME_META[cur] ? cur : 'sakura';
   $('theme-list').innerHTML = Object.keys(THEME_META).map(k => {
     const m = THEME_META[k], on = k === cur;
-    return `<button type="button" class="theme-opt${on ? ' sel' : ''}" onclick="saveTheme('${k}')"><span class="swatch" style="background:${m.bg}"><span style="background:${m.ac}"></span></span><span><b>${m.name}</b><p>${m.desc}</p></span><span class="radio"></span></button>`;
+    return '<button type="button" class="theme-opt' + (on ? ' sel' : '') + '" onclick="saveTheme(\'' + k + '\')"><span class="swatch" style="background:' + m.bg + '"><span style="background:' + m.ac + '"></span></span><span><b>' + m.name + '</b><p>' + m.desc + '</p></span><span class="radio"></span></button>';
   }).join('');
 }
 async function saveTheme(k) {
   try {
     const r = await SK.post('/api/admin/theme', { theme: k });
     applyTheme(r.theme); renderThemePicker(r.theme);
-    $('thememsg').textContent = '保存しました（このお店の接客画面にもすぐ反映されます）。';
+    $('thememsg').textContent = '保存しました。このお店の接客画面にもすぐ反映されます。';
   } catch (e) { $('thememsg').textContent = e.message; }
 }
-function start(s, acct) { ST = s; $('login').classList.add('hide'); $('app').classList.remove('hide'); $('who').textContent = s.name + ' / ' + (acct ? acct.name : ''); $('kiosk').href = '/k/' + s.slug + '?debug=1'; load(); tab('home'); loadCardCount(); setInterval(poll, 5000); }
-const MAIN_OF = { home:'home', q:'q', cards:'cards', data:'data', more:'more', voice:'more', test:'more', logs:'more', hist:'more', acct:'more', usage:'more' };
+function start(s, acct) {
+  ST = s; $('login').classList.add('hide'); $('app').classList.remove('hide');
+  $('who').textContent = s.name + (acct && acct.name ? ' ／ ' + acct.name : '');
+  const hb = document.querySelector('.a-header b'); if (hb) hb.textContent = '店長モード';
+  $('kiosk').href = '/k/' + s.slug + '?debug=1';
+  load(); tab('home'); loadCardCount(); setInterval(poll, 5000);
+}
+const MAIN_OF = { home:'home', q:'q', cards:'cards', data:'data', more:'more', test:'more', hist:'more', acct:'more', usage:'more' };
 function tab(t) {
-  ['q', 'q2', 'cards', 'voice', 'data', 'test', 'logs', 'hist', 'acct', 'usage', 'more'].forEach(x => { const el = $('t-' + x); if (el) el.classList.toggle('hide', x !== t); });
+  ['home','q','cards','data','more','test','hist','acct','usage'].forEach(x => { const el = $('t-' + x); if (el) el.classList.toggle('hide', x !== t); });
   CUR = t;
+  document.getElementById('app').classList.toggle('tab-cards', t === 'cards');
   document.querySelectorAll('.tabbar .tab').forEach(b => b.classList.toggle('on', b.dataset.t === (MAIN_OF[t] || t)));
-  if (t === 'home') { loadGrowth(); const g = $('t-q'); if (g) g.classList.remove('hide'); }
+  if (t === 'home') loadHome();
   if (t === 'q') loadQ();
   if (t === 'cards') loadCards();
-  if (t === 'logs' || t === 'hist') loadLogs();
+  if (t === 'data') load();
+  if (t === 'hist') loadLogs();
   if (t === 'acct') loadAccts();
   if (t === 'usage') loadUsage();
-  if (t === 'more') { renderThemePicker(document.documentElement.dataset.theme); }
+  if (t === 'more') renderThemePicker(document.documentElement.dataset.theme);
 }
 const ST_JA = { active: '有効', suspended: '停止中', deleted: '削除済み' }, CS_JA = { unused: '未使用', used: '使用済み', expired: '期限切れ', revoked: '無効化' };
+const ACT_JA = { add: '追加', update: '更新', delete: '削除' };
 async function loadAccts() {
   const d = await SK.get('/api/admin/accounts'), b = d.plan;
-  $('bill').innerHTML = `プラン <b>${b.plan}</b>（会話${b.included_minutes}分/月・店舗共通枠）<br><span class="muted">${esc(b.note)}</span>`;
-  $('accts').innerHTML = '<table><tr><th>名前</th><th>種別</th><th>状態</th><th>端末</th><th>ログイン中</th><th>最終操作</th><th>会話数</th><th>操作</th></tr>' + d.accounts.filter(a => a.status !== 'deleted').map(a => `<tr><td>${esc(a.name)}</td><td>${a.role === 'owner' ? 'オーナー' : '店員'}</td><td>${ST_JA[a.status]}${a.needs_rebind ? '（再登録待ち）' : ''}</td><td class="muted">${esc(a.device_label || (a.device_bound ? '登録済' : '—'))}</td><td>${a.online ? '●' : ''}</td><td class="muted">${a.last_seen || ''}</td><td>${a.conversations}</td><td>${a.role === 'owner' ? '' : `${a.status === 'active' ? `<button onclick="ctl(${a.id},'suspend')">停止</button>` : `<button onclick="ctl(${a.id},'resume')">再開</button>`}<button onclick="ctl(${a.id},'kick')">強制ログアウト</button><button onclick="reissue(${a.id})">再発行</button><button onclick="delAcct(${a.id})">削除（失効）</button>`}</td></tr>`).join('') + '</table>';
-  $('codes').innerHTML = '<table><tr><th>種別</th><th>メモ</th><th>状態</th><th>期限</th><th></th></tr>' + d.codes.map(c => `<tr><td>${c.kind === 'rebind' ? '再発行' : '新規'}</td><td>${esc(c.label)}</td><td>${CS_JA[c.state]}</td><td class="muted">${c.expires_at}</td><td>${c.state === 'unused' ? `<button onclick="revokeCode(${c.id})">無効化</button>` : ''}</td></tr>`).join('') + '</table><div class="muted">登録コード本体は発行時の1回しか表示されません（DBにはハッシュのみ）。</div>';
-  $('aev').innerHTML = d.events.map(e => `${e.ts_iso} #${e.account_id ?? '-'} ${e.event} ${esc(e.detail)}`).join('<br>');
+  $('bill').innerHTML = '<div class="a-card">今のプラン：<b>' + esc(b.plan) + '</b>（ひと月 ' + esc(b.included_minutes) + ' 分・お店で共用）<div class="muted">' + esc(b.note) + '</div></div>';
+  $('accts').innerHTML = d.accounts.filter(a => a.status !== 'deleted').map(a => {
+    const ops = a.role === 'owner' ? '' : ((a.status === 'active' ? '<button type="button" onclick="ctl(' + a.id + ',\'suspend\')">停止</button>' : '<button type="button" onclick="ctl(' + a.id + ',\'resume\')">再開</button>') + '<button type="button" onclick="ctl(' + a.id + ',\'kick\')">ログアウトさせる</button><button type="button" onclick="reissue(' + a.id + ')">再発行</button><button type="button" onclick="delAcct(' + a.id + ')">削除</button>');
+    return '<div class="acct-card"><b>' + esc(a.name) + '</b>　' + (a.role === 'owner' ? 'オーナー' : '店員') + '　' + ST_JA[a.status] + (a.needs_rebind ? '（再登録待ち）' : '') + (a.online ? '　接続中' : '') + '<div class="muted">端末 ' + esc(a.device_label || (a.device_bound ? '登録済み' : 'なし')) + (a.last_seen ? '　最後の操作 ' + esc(a.last_seen) : '') + '</div>' + (ops ? '<div class="rowbtns" style="margin-top:8px">' + ops + '</div>' : '') + '</div>';
+  }).join('') || '<div class="muted">まだありません</div>';
+  $('codes').innerHTML = d.codes.map(c => '<div class="code-card">' + (c.kind === 'rebind' ? '再発行' : '新規') + '　' + esc(c.label) + '　' + CS_JA[c.state] + '<div class="muted">期限 ' + esc(c.expires_at) + '</div>' + (c.state === 'unused' ? '<button type="button" onclick="revokeCode(' + c.id + ')">無効にする</button>' : '') + '</div>').join('') || '<div class="muted">まだありません</div>';
+  $('aev').innerHTML = d.events.map(e => '<div class="hist-row"><div class="meta muted">' + esc(e.ts_iso) + '</div>' + esc(e.event) + ' ' + esc(e.detail) + '</div>').join('') || '';
 }
-function showCode(r) { $('newcode').innerHTML = `<div style="background:#fef9c3;padding:8px;border-radius:8px;margin-top:6px">登録コード <b style="font-size:24px;letter-spacing:3px">${r.code}</b>　有効期限 ${r.expires_at}（1回使うと無効）<br><span class="muted">今しか表示されません。相手に伝えたら閉じてください。相手は「新しい端末・アカウントを登録」に店舗IDとこのコードを入力します。</span></div>`; }
+function showCode(r) { $('newcode').innerHTML = '<div class="preview">登録コード <b style="font-size:24px;letter-spacing:3px">' + esc(r.code) + '</b><div>有効期限 ' + esc(r.expires_at) + '（1回使うと無効）</div><div class="muted">今しか表示されません。相手に伝えたら閉じてください。</div></div>'; }
 async function issueCode() { try { showCode(await SK.post('/api/admin/codes', { label: $('clabel').value, ttl_min: +$('cttl').value })); loadAccts(); } catch (e) { alert(e.message); } }
-async function ctl(id, a) { try { await withReauth(() => SK.post(`/api/admin/accounts/${id}/${a}`, {})); loadAccts(); } catch (e) { alert(e.message); } }
-async function delAcct(id) { if (confirm('削除（失効）します。ログインできなくなります。')) ctl(id, 'delete'); }
-async function reissue(id) { if (confirm('旧パスワード・旧端末・ログイン中の状態を直ちに無効にして、新しい登録コードを発行します。')) { try { showCode(await withReauth(() => SK.post(`/api/admin/accounts/${id}/reissue`, {}))); loadAccts(); } catch (e) { alert(e.message); } } }
-async function revokeCode(id) { await SK.post(`/api/admin/codes/${id}/revoke`, {}); loadAccts(); }
-// 再認証（パスワード再入力）が必要な操作は、入力を求めてから自動で再実行する
+async function ctl(id, a) { try { await withReauth(() => SK.post('/api/admin/accounts/' + id + '/' + a, {})); loadAccts(); } catch (e) { alert(e.message); } }
+async function delAcct(id) { if (confirm('削除します。ログインできなくなります。')) ctl(id, 'delete'); }
+async function reissue(id) { if (confirm('今のパスワードと端末・ログインを無効にして、新しい登録コードを発行します。')) { try { showCode(await withReauth(() => SK.post('/api/admin/accounts/' + id + '/reissue', {}))); loadAccts(); } catch (e) { alert(e.message); } } }
+async function revokeCode(id) { await SK.post('/api/admin/codes/' + id + '/revoke', {}); loadAccts(); }
 async function withReauth(fn) {
   try { return await fn(); } catch (e) {
     if (e.code !== 'reauth_required') throw e;
-    const pw = prompt('重要な操作です。パスワードを再入力してください（5分間有効）'); if (!pw) throw e;
+    const pw = prompt('大切な操作です。パスワードを再入力してください（5分間有効）'); if (!pw) throw e;
     await SK.post('/api/admin/reauth', { password: pw }); return await fn();
   }
 }
-const LV = { L0: ['通常', '#16a34a'], L1: ['警告（80%超）', '#d97706'], L2: ['縮退中（この店舗のAI音声は停止。カード表示のみ）', '#dc2626'], L3: ['全体縮退（AI音声は利用できません）', '#dc2626'] };
-const bar = (u, unit = '') => `<div style="background:#e2e8f0;border-radius:6px;height:10px;width:220px;display:inline-block;vertical-align:middle"><div style="background:${u.pct >= 100 ? '#dc2626' : u.pct >= 80 ? '#d97706' : '#16a34a'};height:10px;border-radius:6px;width:${Math.min(100, u.pct || 0)}%"></div></div> ${u.used}${unit} / ${u.cap}${unit}（${u.pct}%）`;
+const LV_JA = { L0: '通常', L1: '上限に近いので注意', L2: 'このお店の音声案内は一時停止中です（文字案内のみ）', L3: '全体の音声案内は一時停止中です' };
+function bar(u, unit) {
+  unit = unit || '';
+  const pct = Math.min(100, u.pct || 0);
+  const col = u.pct >= 100 ? 'var(--danger-ink)' : u.pct >= 80 ? 'var(--warn-ink)' : 'var(--ok-ink)';
+  return '<div style="background:var(--chip);border-radius:6px;height:10px;width:100%"><div style="background:' + col + ';height:10px;border-radius:6px;width:' + pct + '%"></div></div><div class="muted">' + u.used + unit + ' ／ ' + u.cap + unit + '</div>';
+}
 async function loadUsage() {
-  const d = await SK.get('/api/admin/usage'), lv = LV[d.level.level], t = d.today, m = d.month;
-  $('usage').innerHTML = `<div style="background:${lv[1]};color:#fff;padding:8px;border-radius:8px">状態 ${d.level.level}：${lv[0]}${d.level.until ? '／再開 ' + d.level.until : ''}${d.level.reason ? '（' + esc(d.level.reason) + '）' : ''}</div>
-  <h3 style="font-size:14px">今日（${t.resets_at} にリセット）</h3>会話数 ${bar(t.conversations)}<br>会話時間 ${bar(t.minutes, '分')}<br>API原価 ${bar(t.cost_yen, '円')}<br>音声登録の回数 ${bar(t.owner_voice)}
-  <h3 style="font-size:14px">今月（${m.resets_at} にリセット）</h3>会話数 ${m.conversations.used}件<br>会話時間 ${bar(m.minutes, '分')}<br>API原価 ${bar(m.cost_yen, '円')}
-  <h3 style="font-size:14px">その他</h3>平均応答（サーバー側）${d.avg_latency_ms ?? '—'}ms／直近のAPIエラー率 ${d.error_rate_recent ?? '—'}／今月の未回答 ${d.unanswered_this_month}件
-  <h3 style="font-size:14px">直近の警告・上限到達</h3>${d.warnings.length ? d.warnings.map(w => `${w.ts} ${esc(w.event)} ${esc(w.detail)}`).join('<br>') : '（なし）'}
-  <div class="muted" style="margin-top:8px">${esc(d.note)} 上限はプランで決まり、アカウントや端末を増やしても増えません。上限の変更は運営のみです。上限に達するとAI音声は止まり、営業時間・料金などの文字表示とスタッフ呼び出しに切り替わります（手入力の登録はいつでも可能）。</div>`;
+  const d = await SK.get('/api/admin/usage'), t = d.today, m = d.month, lv = (d.level && d.level.level) || 'L0';
+  $('usage').innerHTML = '<div class="a-card" style="margin-bottom:8px">' + esc(LV_JA[lv] || '通常') + (d.level && d.level.until ? '（再開 ' + esc(d.level.until) + '）' : '') + '</div>' +
+    '<div class="sec-label">今日（' + esc(t.resets_at) + ' にリセット）</div>接客の数' + bar(t.conversations) + '接客の時間' + bar(t.minutes, '分') + '利用の目安' + bar(t.cost_yen, '円') +
+    '<div class="sec-label">今月（' + esc(m.resets_at) + ' にリセット）</div><div>接客 ' + m.conversations.used + ' 件</div>接客の時間' + bar(m.minutes, '分') + '利用の目安' + bar(m.cost_yen, '円') +
+    '<div class="muted" style="margin-top:10px">' + esc(d.note) + '</div>';
+}
+function itemLine(t, r) {
+  if (t === 'hours') {
+    const d = WD[r.weekday] || '';
+    if (r.closed) return d + '曜日　定休日';
+    let s = d + '曜日　' + (r.open || '') + '〜' + (r.close || '');
+    if (r.open2) s += '／' + r.open2 + '〜' + (r.close2 || '');
+    if (r.note) s += '　' + r.note;
+    return s;
+  }
+  if (t === 'special_hours') {
+    const rng = (r.date_from || '') + (r.date_to && r.date_to !== r.date_from ? '〜' + r.date_to : '');
+    return rng + '　' + (r.closed ? '休業' : ((r.open || '') + '〜' + (r.close || ''))) + (r.note ? '　' + r.note : '');
+  }
+  if (t === 'prices') return (r.name || '') + (r.tier ? '（' + r.tier + '）' : '') + '　' + yen(r.amount_yen) + (r.note ? '　' + r.note : '');
+  if (t === 'menu') return (r.name || '') + '　' + (r.price_yen != null && r.price_yen !== '' ? yen(r.price_yen) : '') + (r.category ? '　' + r.category : '');
+  if (t === 'payments') return r.method || '';
+  if (t === 'faqs') return (r.topic || '') + (r.answer ? '　' + r.answer : '');
+  if (t === 'profile') return (r.slot || '') + (r.answer ? '　' + r.answer : '');
+  if (t === 'price_tiers') return (r.name || '') + (r.aliases ? '（' + r.aliases + '）' : '');
+  return '';
 }
 async function load() {
   const d = await SK.get('/api/admin/store');
+  STORE = d;
   applyTheme(d.store && d.store.theme);
-  $('facts').innerHTML = d.facts.map(f => `[${f.id}] ${esc(f.text)}`).join('<br>');
   window.CONFLICTS = d.conflicts || [];
+  $('conflicts').innerHTML = CONFLICTS.length ? '<div class="q-card unanswered"><b>登録内容に食い違いがあります</b><div class="muted">この項目は接客では案内せず、スタッフに確認するよう答えます。</div>' + CONFLICTS.map(x => '<div>' + esc(x) + '</div>').join('') + '</div>' : '';
   $('tables').innerHTML = Object.keys(COLS).map(t => {
-    const cols = COLS[t].map(c => c.split('(')[0]);
-    return `<h3 style="font-size:14px">${JA[t]}</h3><table><tr>${COLS[t].map(c => `<th>${c}</th>`).join('')}<th>更新日</th><th></th></tr>` +
-      d[t].map(r => { const sr = (d.sources || {})[t + ':' + r.id]; return `<tr>${cols.map(c => `<td><input data-t="${t}" data-id="${r.id}" data-c="${c}" value="${esc(r[c])}" size="8"></td>`).join('')}<td class="muted">${esc(r.updated_at)}${sr ? '<br>出典 ' + esc(sr.url) + '（' + esc((sr.fetched_at || '').slice(0, 10)) + ' 取得）' : ''}</td><td><button onclick="saveRow('${t}',${r.id})">保存</button><button onclick="delRow('${t}',${r.id})">削除</button></td></tr>`; }).join('') +
-      `<tr>${cols.map(c => `<td><input data-t="${t}" data-id="new" data-c="${c}" size="8"></td>`).join('')}<td></td><td><button onclick="saveRow('${t}','new')">追加</button></td></tr></table>`;
+    const rows = (d[t] || []).map(r => '<div class="item-row" onclick="editRow(\'' + t + '\',' + r.id + ')"><div class="body"><div class="name">' + esc(itemLine(t, r)) + '</div></div><div class="chev">›</div></div>').join('') || '<div class="muted">まだありません</div>';
+    return '<div class="list-h">' + JA[t] + '</div>' + rows + '<button type="button" class="btn-fix" style="margin-bottom:8px" onclick="editRow(\'' + t + '\',\'new\')">追加する</button>';
   }).join('');
-  $('tables').insertAdjacentHTML('afterbegin', CONFLICTS.length ? `<div style="background:#fee2e2;padding:8px;border-radius:8px;margin-bottom:8px"><b>登録内容に食い違いがあります（接客AIはこの項目を案内せず「スタッフにご確認ください」と答えます）</b><br>${CONFLICTS.map(esc).join('<br>')}</div>` : '');
 }
-function rowVals(t, id) { const v = {}; document.querySelectorAll(`input[data-t="${t}"][data-id="${id}"]`).forEach(i => { let x = i.value.trim(); v[i.dataset.c] = x === '' ? null : (/^(weekday|amount_yen|price_yen|closed)$/.test(i.dataset.c) ? +x : x); }); return v; }
-async function saveRow(t, id) { try { const r = await withReauth(() => SK.post('/api/admin/crud', { table: t, action: id === 'new' ? 'add' : 'update', id: id === 'new' ? null : id, values: rowVals(t, id) })); if (r.conflicts && r.conflicts.length) alert('保存しました。ただし次の食い違いがあります（接客では案内されません）:\n' + r.conflicts.join('\n')); load(); } catch (e) { alert(e.message); } }
-async function delRow(t, id) { if (!confirm('削除しますか？')) return; try { await withReauth(() => SK.post('/api/admin/crud', { table: t, action: 'delete', id })); load(); } catch (e) { alert(e.message); } }
+function closeSheet() { $('sheet').classList.add('hide'); $('sheetbody').innerHTML = ''; }
+function fieldHtml(t, c, val) {
+  const lab = LAB[t][c] || c;
+  if (c === 'weekday') return '<div class="field"><label>' + lab + '</label><select data-c="' + c + '" class="fullin">' + WD.map((w, i) => '<option value="' + i + '"' + (String(val) === String(i) ? ' selected' : '') + '>' + w + '曜日</option>').join('') + '</select></div>';
+  if (c === 'closed') return '<div class="field"><label><input type="checkbox" data-c="closed"' + (val ? ' checked' : '') + '> ' + lab + '</label></div>';
+  const typ = /(_yen|amount)/.test(c) ? 'number' : /^(open|close|date_|valid_)/.test(c) ? 'text' : 'text';
+  return '<div class="field"><label>' + lab + '</label><input class="fullin" data-c="' + c + '" type="' + typ + '" value="' + esc(val ?? '') + '"></div>';
+}
+function editRow(t, id) {
+  const rows = (STORE && STORE[t]) || [];
+  const r = id === 'new' ? {} : (rows.find(x => String(x.id) === String(id)) || {});
+  const body = '<h3>' + (id === 'new' ? JA[t] + 'を追加' : '直す') + '</h3>' +
+    COLS[t].map(c => fieldHtml(t, c, r[c])).join('') +
+    '<div class="rowbtns"><button type="button" class="pri" onclick="saveSheet(\'' + t + '\',\'' + id + '\')">直す</button><button type="button" onclick="closeSheet()">閉じる</button></div>' +
+    (id === 'new' ? '' : '<button type="button" class="danger-link" onclick="delRow(\'' + t + '\',' + id + ')">この項目を消す</button>');
+  $('sheetbody').innerHTML = body;
+  $('sheet').classList.remove('hide');
+}
+function sheetVals(t) {
+  const v = {};
+  $('sheetbody').querySelectorAll('[data-c]').forEach(i => {
+    const c = i.dataset.c;
+    if (i.type === 'checkbox') { v[c] = i.checked ? 1 : 0; return; }
+    let x = i.value.trim();
+    v[c] = x === '' ? null : (/^(weekday|amount_yen|price_yen|closed)$/.test(c) ? +x : x);
+  });
+  return v;
+}
+async function saveSheet(t, id) {
+  try {
+    const r = await withReauth(() => SK.post('/api/admin/crud', { table: t, action: id === 'new' ? 'add' : 'update', id: id === 'new' ? null : +id, values: sheetVals(t) }));
+    if (r.conflicts && r.conflicts.length) alert('保存しました。ただし次の食い違いがあります（接客では案内されません）:\n' + r.conflicts.join('\n'));
+    closeSheet(); load();
+  } catch (e) { alert(e.message); }
+}
+function rowVals(t, id) { return sheetVals(t); }
+async function saveRow(t, id) { return saveSheet(t, id); }
+async function delRow(t, id) { if (!confirm('この項目を消しますか？')) return; try { await withReauth(() => SK.post('/api/admin/crud', { table: t, action: 'delete', id })); closeSheet(); load(); } catch (e) { alert(e.message); } }
+function openWeb() {
+  $('sheetbody').innerHTML = '<h3>URLを貼る</h3><div class="field"><label>お店のページのURL</label><input id="weburl" class="fullin" placeholder="https://"></div><button type="button" class="cta" onclick="sendWeb()">読み取る</button><div id="webmsg" class="muted"></div>';
+  $('sheet').classList.remove('hide');
+}
+async function sendWeb() {
+  const url = $('weburl').value.trim(); if (!url) return;
+  $('webmsg').textContent = '読み取っています…少し時間がかかることがあります';
+  try {
+    const r = await SK.post('/api/admin/web', { url });
+    closeSheet(); showImport(r); tab('cards'); loadCards();
+  } catch (e) { $('webmsg').textContent = e.message; }
+}
+function openSpeak() {
+  $('sheetbody').innerHTML = '<h3>話す・書く</h3><textarea id="vtext" rows="4" placeholder="例：うちは60分3,000円。営業時間は朝5時まで"></textarea><button type="button" id="vrec" class="mic-big" onclick="voiceRec()">マイクで話す</button><button type="button" class="cta sub" style="margin-top:8px" onclick="voiceText()">この内容で変更案を作る</button><div id="vtr" class="muted"></div>';
+  $('sheet').classList.remove('hide');
+}
 async function showProposal(j) {
-  $('vtr').textContent = '聞き取り: ' + j.transcript + (j.asr ? ` （認識 ${j.asr.ms}ms）` : '') + ` / 合計 ${j.total_ms}ms`;
-  $('ctext').textContent = j.confirm_text; $('vres').textContent = j.rejected.length ? '除外: ' + j.rejected.join(' / ') : '';
-  pending = j.pending_id; opsHash = j.ops_hash; $('confirm').classList.toggle('hide', !pending); $('cimp').classList.toggle('hide', !j.important); $('apw').value = '';
-  $('cwarn').textContent = (j.warnings || []).length ? '⚠ 食い違い: ' + j.warnings.join(' / ') : '';
-  if (pending) await SK.playPcmStream('/api/admin/say', { pending_id: pending });
+  closeSheet();
+  if (j.pending_id) { tab('cards'); await loadCards(); $('chgmsg').textContent = '下の変更案を確認して、よければ「OK」を押してください。'; }
+  else { $('chgmsg').textContent = '登録できる内容が見つかりませんでした。'; tab('cards'); }
 }
-async function voiceRec() { $('vrec').className = 'rec'; $('vrec').textContent = '準備中…'; $('vrec').onclick = () => SK.stopRec && SK.stopRec(); const r = await SK.record({ maxMs: 30000, silenceMs: 1500, onStart: () => { $('vrec').textContent = '聞いています（タップで終了）'; } }); $('vrec').className = 'pri'; $('vrec').textContent = '🎤 話す'; $('vrec').onclick = voiceRec; $('vtr').textContent = '解析中…'; try { showProposal(await SK.post('/api/admin/voice', { audio_b64: r.b64, mime: r.mime })); } catch (e) { $('vtr').textContent = e.message; } }
-async function voiceText() { SK.ensureCtx(); $('vtr').textContent = '解析中…'; try { showProposal(await SK.post('/api/admin/voice', { text: $('vtext').value })); } catch (e) { $('vtr').textContent = e.message; } }
-async function finish(j) { $('vres').textContent = `${j.message}` + (j.transcript ? `（返答: ${j.transcript}）` : ''); if (j.result !== 'reask' && j.result !== 'needs_screen_approval') { $('confirm').classList.add('hide'); pending = null; load(); } await SK.playPcmStream('/api/admin/say', { fixed: j.message }).catch(() => {}); }
-async function approve() { if (!pending) return; try { finish(await SK.post('/api/admin/approve', { pending_id: pending, ops_hash: opsHash, password: $('apw').value })); } catch (e) { $('vres').textContent = e.message; } }
+async function voiceRec() {
+  const btn = $('vrec') || $('chgmic');
+  if (btn) { btn.classList.add('rec'); btn.textContent = '準備中…'; }
+  try {
+    const r = await SK.record({ maxMs: 30000, silenceMs: 1500, onStart: () => { if (btn) btn.textContent = '聞いています（タップで終了）'; } });
+    if (btn) { btn.classList.remove('rec'); btn.textContent = 'マイクで話す'; }
+    if ($('vtr')) $('vtr').textContent = '読み取っています…';
+    showProposal(await SK.post('/api/admin/voice', { audio_b64: r.b64, mime: r.mime }));
+  } catch (e) { if (btn) { btn.classList.remove('rec'); btn.textContent = 'マイクで話す'; } if ($('vtr')) $('vtr').textContent = e.message; else $('chgmsg').textContent = e.message; }
+}
+async function voiceText() { const t = $('vtext') && $('vtext').value.trim(); if (!t) return; if ($('vtr')) $('vtr').textContent = '読み取っています…'; try { showProposal(await SK.post('/api/admin/voice', { text: t })); } catch (e) { if ($('vtr')) $('vtr').textContent = e.message; } }
+async function fabRec(btn) {
+  btn.classList.add('rec'); btn.textContent = '…';
+  try {
+    const r = await SK.record({ maxMs: 30000, silenceMs: 1500, onStart: () => { btn.textContent = '●'; } });
+    btn.classList.remove('rec'); btn.textContent = '🎤';
+    showProposal(await SK.post('/api/admin/voice', { audio_b64: r.b64, mime: r.mime }));
+  } catch (e) { btn.classList.remove('rec'); btn.textContent = '🎤'; alert(e.message); }
+}
+async function micChange(btn) {
+  btn.classList.add('rec'); btn.textContent = '準備中…';
+  try {
+    const r = await SK.record({ maxMs: 30000, silenceMs: 1500, onStart: () => { btn.textContent = '聞いています（タップで終了）'; } });
+    btn.classList.remove('rec'); btn.textContent = 'マイクで話す';
+    $('chgmsg').textContent = '読み取っています…';
+    const j = await SK.post('/api/admin/voice', { audio_b64: r.b64, mime: r.mime });
+    $('chgmsg').textContent = j.pending_id ? '下の変更案を確認して、よければ「OK」を押してください。' : '登録できる内容が見つかりませんでした。';
+    loadCards();
+  } catch (e) { btn.classList.remove('rec'); btn.textContent = 'マイクで話す'; $('chgmsg').textContent = e.message; }
+}
+async function finish(j) { closeSheet(); $('chgmsg').textContent = j.message || ''; if (j.result !== 'reask' && j.result !== 'needs_screen_approval') load(); }
+async function approve() { return approveCard(pending, opsHash); }
 async function confirmAns(t) { if (!pending) return; finish(await SK.post('/api/admin/confirm', { pending_id: pending, text: t })); }
 async function confirmVoice() { const r = await SK.record({ maxMs: 6000 }); finish(await SK.post('/api/admin/confirm', { pending_id: pending, audio_b64: r.b64, mime: r.mime })); }
-async function testAsk() { const j = await SK.post('/api/admin/test_ask', { text: $('tq').value }); if (j.degraded) { $('tres').innerHTML = `<b>縮退中：${esc(j.message)}</b>`; return; }
-  $('tres').innerHTML = `<b>${esc(j.answer)}</b> <span class="muted">${j.status} ${esc(j.reason)} 根拠:${j.fact_ids.join(',')} LLM ${j.timings.llm_ms}ms $${j.cost_usd.toFixed(6)}</span>`; }
+async function testAsk() {
+  const j = await SK.post('/api/admin/test_ask', { text: $('tq').value });
+  if (j.degraded) { $('tres').innerHTML = '<div class="q-card review"><b>' + esc(j.message) + '</b></div>'; return; }
+  $('tres').innerHTML = '<div class="ai-ans">' + esc(j.answer) + '</div>';
+}
 async function loadLogs() {
   const d = await SK.get('/api/admin/logs');
-  $('stats').innerHTML = `接客 ${d.stats.n || 0}件 / 未回答 ${d.stats.unanswered || 0}件 / API原価 $${(d.stats.cost || 0).toFixed(5)} / スタッフ呼び出し ${d.stats.staff_calls || 0}件`;
-  $('convs').innerHTML = '<table><tr><th>日時</th><th>種別</th><th>未回答の質問（個人情報除去済・30日で自動消去）</th><th>状態</th><th>遅延</th></tr>' + d.conversations.map(c => { const t = JSON.parse(c.timings_json || '{}'); return `<tr style="${c.status.startsWith('answered') ? '' : 'background:#fee2e2'}"><td>${c.ts}</td><td>${c.mode}</td><td>${esc(c.question)}</td><td>${esc(c.status)}</td><td>${t.first_audio_ms || t.server_ask_ms || ''}ms</td></tr>`; }).join('') + '</table>';
-  $('hist').innerHTML = '<table><tr><th>日時</th><th>経路</th><th>操作</th><th>前</th><th>後</th></tr>' + d.history.map(h => `<tr><td>${h.ts}</td><td>${h.source}</td><td>${h.table_name} ${h.action}</td><td class="muted">${esc(h.before_json)}</td><td class="muted">${esc(h.after_json)}</td></tr>`).join('') + '</table>';
-  const a = await SK.get('/api/admin/audit'); $('audit').innerHTML = `連鎖検証: ${a.chain_ok ? '正常' : '<b style="color:#dc2626">異常（改ざんの疑い）</b>'}<br>` + a.events.map(e => `${e.ts} #${e.account_id ?? '-'} ${esc(e.event)} ${esc(e.detail)}`).join('<br>');
+  LOGS = d;
+  const srcJa = { voice: '音声', chat: '文字', owner_answer: '質問への回答', owner_chat: '文字', web_import: 'URLから', web_import_approved: 'URLから', photo: '写真から', photo_import: '写真から' };
+  $('hist').innerHTML = (d.history || []).map(h => '<div class="hist-row"><div class="muted">' + esc(h.ts) + '　' + esc(srcJa[h.source] || '') + '</div><b>' + esc(JA[h.table_name] || '') + '　' + esc(ACT_JA[h.action] || h.action) + '</b></div>').join('') || '<div class="muted">まだありません</div>';
+  try {
+    const a = await SK.get('/api/admin/audit');
+    $('audit').innerHTML = (a.events || []).map(e => '<div class="hist-row"><div class="muted">' + esc(e.ts) + '</div>' + esc(e.event) + ' ' + esc(e.detail) + '</div>').join('') || '<div class="muted">まだありません</div>';
+  } catch (e) {}
+  renderConvs(d);
 }
-// ================= 区切りC：お客様の質問・確認カード・成長カード =================
-let CUR = 'q', QS = 'unanswered', QDATA = null, OPEN = {};
-const ST_TXT = { unanswered: '未回答', review: '要確認', answered: '回答済み' };
-const HELP = { unanswered: 'AIが答えられなかった質問です。「返答案」を開いて、選ぶ・ひとこと答える・話すのどれかで答えてください。承認すると、次のお客様から答えられるようになります（過去の回答は変わりません）。', review: 'AIが一部だけ答えた、または別のAIのチェックで「登録にない言い切り」の疑いがある質問です。AIの回答で良ければ「このままでOK」、違えば直してください。', answered: '見るだけで大丈夫です。件数と品質（一部回答・注意の数）を表示しています。' };
+function renderConvs(d) {
+  const rows = (d && d.conversations || []).filter(c => c.mode !== 'test');
+  if (!$('convs')) return;
+  $('convs').innerHTML = rows.length ? rows.map(c => '<div class="conv-row"><div class="muted">' + esc((c.ts || '').slice(5, 16)) + '　' + esc(statusJa(c.status)) + '</div><div class="ttl" style="font-size:14px;font-weight:800;margin:4px 0">' + esc(c.question || '（質問なし）') + '</div>' + (c.answer ? '<div class="ai-ans">' + esc(c.answer) + '</div>' : '<div class="muted">（答えの記録なし）</div>') + '</div>').join('') : '<div class="muted">まだ会話はありません</div>';
+}
+let CUR = 'home', QS = 'unanswered', QDATA = null, OPEN = {}, LOGS = null;
 function poll() { if (CUR === 'q' && !(document.activeElement && document.activeElement.closest && document.activeElement.closest('#qlist'))) loadQ(); loadCardCount(); }
 function qtab(s) { QS = s; renderQ(); }
 async function loadQ() {
   try { QDATA = await SK.get('/api/admin/questions'); } catch (e) { return; }
-  ['unanswered', 'review', 'answered'].forEach(k => $('c-' + k).textContent = QDATA.counts[k]);
-  $('qupd').textContent = '更新 ' + new Date().toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo' }); renderQ(); loadGrowth();
+  ['unanswered', 'review', 'answered'].forEach(k => { const el = $('c-' + k); if (el) el.textContent = QDATA.counts[k]; });
+  renderQ();
+  try { const lg = await SK.get('/api/admin/logs'); LOGS = lg; renderConvs(lg); } catch (e) {}
 }
 function renderQ() {
-  document.querySelectorAll('.qtabs button').forEach(b => b.classList.toggle('on', b.dataset.s === QS)); $('qhelp').textContent = HELP[QS];
+  document.querySelectorAll('#qtabs button').forEach(b => b.classList.toggle('on', b.dataset.s === QS));
   const gs = (QDATA ? QDATA.groups : []).filter(g => g.state === QS);
-  $('qlist').innerHTML = gs.length ? gs.map(qCard).join('') : `<div class="muted" style="padding:12px">${QS === 'answered' ? 'まだありません' : 'ありません。対応が必要な質問はありません 🎉'}</div>`;
+  $('qlist').innerHTML = gs.length ? gs.map(qCard).join('') : '<div class="muted" style="padding:12px">' + (QS === 'answered' ? 'まだありません' : '今は対応が必要な質問はありません') + '</div>';
 }
 function qCard(g) {
   const L = g.latest || {}, au = L.audit || {}, warn = [...(au.unsupported || []), ...(au.contradiction || [])];
-  const badges = (g.n_partial ? `<span class="badge b-warn">一部だけ回答 ${g.n_partial}</span>` : '') + (g.n_flagged ? `<span class="badge b-red">AIチェック注意 ${g.n_flagged}</span>` : '') + (g.resolved_at ? `<span class="badge b-ok">店長対応済み</span>` : '') + (g.kind === 'owner_q' ? `<span class="badge b-red">店長への質問</span>` : '');
-  let h = `<div class="qg ${g.state}" id="g${g.id}"><div class="qh"><span class="ic" title="${esc(g.category)}">${g.icon}</span><b>${esc(g.sample)}</b><span class="cnt">${g.n}件</span><span class="muted">${esc(g.category)}・最新 ${esc((g.last_ts || '').slice(5, 16))}</span>${badges}</div>`;
-  if (g.kind === 'owner_q') h += `<div class="ai">料金の区分ごとの金額が登録されていません。AIは金額を作らず「スタッフにご確認ください」と答えています。「返答案」から金額を入れてください（承認後に反映）。</div>`; else
-  h += `<div class="ai"><span class="muted">AIの回答：</span>${esc(L.answer || '（記録なし）')}${warn.length ? `<div style="color:#b45309;font-size:12px;margin-top:4px">⚠ 登録にない言い切りの疑い：${warn.map(esc).join(' / ')}</div>` : ''}</div>`;
+  const stlab = g.state === 'unanswered' ? '答えられなかった' : g.state === 'review' ? '要確認' : '答えられた';
+  const badges = (g.n_partial ? '<span class="badge b-warn">一部だけ回答</span>' : '') + (g.resolved_at ? '<span class="badge b-ok">対応済み</span>' : '') + (g.kind === 'owner_q' ? '<span class="badge b-red">店長への質問</span>' : '') + (g.n > 1 ? '<span class="cnt">' + g.n + '件</span>' : '');
+  let h = '<div class="q-card ' + g.state + '" id="g' + g.id + '"><div class="ttl">' + esc(g.sample) + '</div><div class="muted">' + esc(stlab) + (g.last_ts ? '　' + esc((g.last_ts || '').slice(5, 16)) : '') + '　' + badges + '</div>';
+  if (g.kind === 'owner_q') h += '<div class="ai-ans">料金の区分ごとの金額がまだ登録されていません。金額を話すか書いてください。</div>';
+  else h += '<div class="ai-ans">' + esc(L.answer || '（答えの記録なし）') + (warn.length ? '<div style="color:var(--warn-ink);font-size:12px;margin-top:4px">登録にない言い切りの疑いがあります</div>' : '') + '</div>';
   if (g.state !== 'answered') {
-    h += `<div style="margin-top:6px"><button onclick="openDraft(${g.id})">✍ 返答案</button> ${g.state === 'review' ? `<button class="pri" onclick="qok(${g.id})">このままでOK</button>` : ''}</div>`;
-    h += `<div id="d${g.id}">${OPEN[g.id] ? draftBox(g.id, OPEN[g.id]) : ''}</div>`;
-  } else {
-    h += `<div class="muted" style="margin-top:4px">回答 ${g.n_answered}/${g.n}件</div>`;
+    h += '<div class="rowbtns">' + (g.state === 'unanswered' ? '<button type="button" class="btn-speak" onclick="ansSpeak(' + g.id + ')">答えを話す</button>' : '') + '<button type="button" class="btn-fix" onclick="openFix(' + g.id + ')">直す</button>' + (g.state === 'review' ? '<button type="button" class="pri" onclick="qok(' + g.id + ')">このままでOK</button>' : '') + '</div>';
+    h += '<div id="d' + g.id + '">' + (OPEN[g.id] ? fixBox(g.id) : '') + '</div>';
   }
-  return h + `<div id="cd${g.id}"></div></div>`;
+  return h + '<div id="cd' + g.id + '"></div></div>';
 }
-function draftBox(id, d) {
-  return `<div class="draft"><div class="muted">AIの返答案（登録情報から作成${d.known ? '' : '。［　］は店長が埋める所'}）</div>
-    <textarea id="dr${id}" rows="2" style="width:100%">${esc(d.reply)}</textarea>
-    ${(d.choices || []).length ? '<div>タップで選ぶ：' + d.choices.map(c => `<button class="chip" onclick="fillChoice(${id}, '${esc(c).replace(/'/g, '')}')">${esc(c)}</button>`).join('') + '</div>' : ''}
-    <div style="margin-top:4px">見出し <input id="dt${id}" value="${esc(d.topic)}" size="8"> <button class="pri" onclick="useDraft(${id})">この文で確認カードへ</button></div>
-    <div style="margin-top:6px">または ひとことで答える <input id="oa${id}" size="20" placeholder="例: ないです／近くにコインパーキング"> <button onclick="stt($('oa${id}'), this)">🎤</button> <button onclick="ownerAnswer(${id})">AIに返答文へ整えてもらう</button></div>
-    <div class="muted">🎤 はブラウザ標準の音声入力（無料）。文字になったものを確認してから送れます。</div></div>`;
+function fixBox(id) {
+  return '<div class="draft"><textarea id="oa' + id + '" rows="3" placeholder="正しい答えを話すか、書く"></textarea><div class="rowbtns" style="margin-top:8px"><button type="button" onclick="stt($(\'oa' + id + '\'), this)">マイク</button><button type="button" class="pri" onclick="ownerAnswer(' + id + ')">この内容で変更案を作る</button></div></div>';
 }
-async function openDraft(id) {
-  const box = $('d' + id); box.innerHTML = '<div class="muted">返答案を作っています…</div>';
-  try { const g = QDATA.groups.find(x => x.id === id); const d = g && g.draft ? g.draft : await SK.post(`/api/admin/questions/${id}/draft`, {}); OPEN[id] = d; box.innerHTML = draftBox(id, d); } catch (e) { box.innerHTML = `<span style="color:#b91c1c">${esc(e.message)}</span>`; }
+function openFix(id) { OPEN[id] = OPEN[id] || { open: 1 }; const box = $('d' + id); if (box) box.innerHTML = fixBox(id); }
+function ansSpeak(id) {
+  openFix(id);
+  const inp = $('oa' + id), btn = { textContent: 'マイク' };
+  if (!inp) return;
+  stt(inp, btn, () => { if (inp.value.trim()) ownerAnswer(id); });
 }
-function fillChoice(id, c) { const t = $('dr' + id); t.value = t.value.includes('［') ? t.value.replace(/［[^］]*］/, c) : t.value; if (!t.value.includes(c)) $('oa' + id).value = c; }
-async function useDraft(id) { try { showCard($('cd' + id), await SK.post(`/api/admin/questions/${id}/approve_draft`, { reply: $('dr' + id).value, topic: $('dt' + id).value })); } catch (e) { alert(e.message); } }
-async function ownerAnswer(id) { const t = $('oa' + id).value.trim(); if (!t) return; $('cd' + id).innerHTML = '<div class="muted">整えています…</div>'; try { showCard($('cd' + id), await SK.post(`/api/admin/questions/${id}/answer`, { text: t })); } catch (e) { $('cd' + id).innerHTML = esc(e.message); } }
-async function qok(id) { await SK.post(`/api/admin/questions/${id}/ok`, {}); delete OPEN[id]; loadQ(); }
-// 確認カード（変更前→変更後・開始日・重要な変更はパスワード）
+function draftBox(id, d) { return fixBox(id); }
+async function openDraft(id) { openFix(id); }
+function fillChoice(id, c) { const t = $('oa' + id); if (t && !t.value.includes(c)) t.value = (t.value ? t.value + ' ' : '') + c; }
+async function useDraft(id) { return ownerAnswer(id); }
+async function ownerAnswer(id) { const t = $('oa' + id) && $('oa' + id).value.trim(); if (!t) return; const el = $('cd' + id); el.innerHTML = '<div class="muted">整えています…</div>'; try { showCard(el, await SK.post('/api/admin/questions/' + id + '/answer', { text: t })); } catch (e) { el.innerHTML = '<span style="color:var(--danger-ink)">' + esc(e.message) + '</span>'; } }
+async function qok(id) { await SK.post('/api/admin/questions/' + id + '/ok', {}); delete OPEN[id]; loadQ(); }
 function cardDiffLine(d) {
-  return `<div class="change">${esc(d.item)}　<span class="before">前：${esc(d.before == null || d.before === '' ? '（なし）' : d.before)}</span><span class="arrow">→</span><span class="after">後：${esc(d.after == null || d.after === '' ? '（なし）' : d.after)}</span></div>`;
+  return '<div class="change">' + esc(d.item) + '　<span class="before">今：' + esc(d.before == null || d.before === '' ? '（なし）' : d.before) + '</span><span class="arrow">→</span><span class="after">あと：' + esc(d.after == null || d.after === '' ? '（なし）' : d.after) + '</span></div>';
 }
 function cardHtml(c) {
   const must = (c.must_confirm || []).length, MJ = { set_hours: '営業時間・営業日', set_special_hours: '営業日（臨時）', add_payment: '支払い方法', remove_payment: '支払い方法' };
-  const KJ = { voice: '音声での変更', chat: '文字での変更', answer: '質問への回答', web: 'Webから取り込み', web_must: 'Webから取り込み（要確認）', photo: '写真から取り込み', photo_must: '写真から取り込み（要確認）' };
-  const pick = (c.items || []).length > 1 ? `<details style="margin-top:6px"><summary>項目ごとに選ぶ（${c.items.length}件）</summary>${c.items.map(it => `<label style="display:block"><input type="checkbox" data-card="${c.pending_id}" value="${it.i}" checked> ${esc(it.text)}${it.src ? ' <span class="muted">出典 ' + esc(it.src) + '</span>' : ''}</label>`).join('')}<button onclick="narrowCard('${c.pending_id}')">チェックした項目だけ残す</button> <span class="muted">（残した項目は新しいカードになり、もう一度承認が必要です）</span></details>` : '';
-  const title = must ? '要確認：' + [...new Set(c.must_confirm.map(m => MJ[m]))].join('・') : '確認';
+  const KJ = { voice: '音声での変更', chat: '文字での変更', answer: '質問への回答', web: 'URLから取り込み', web_must: 'URLから取り込み（要確認）', photo: '写真から取り込み', photo_must: '写真から取り込み（要確認）' };
+  const pick = (c.items || []).length > 1 ? '<details class="subbox"><summary>項目ごとに選ぶ（' + c.items.length + '件）</summary>' + c.items.map(it => '<label style="display:block"><input type="checkbox" data-card="' + c.pending_id + '" value="' + it.i + '" checked> ' + esc(it.text) + (it.src ? ' <span class="muted">' + esc(it.src) + '</span>' : '') + '</label>').join('') + '<button type="button" onclick="narrowCard(\'' + c.pending_id + '\')">選んだ項目だけ残す</button></details>' : '';
+  const title = must ? '要確認：' + [...new Set(c.must_confirm.map(m => MJ[m]))].join('・') : 'この変更でよいですか';
   const diffs = (c.diff || []).length ? c.diff.map(cardDiffLine).join('') : '<div class="muted">（変更なし）</div>';
-  return `<div class="card confirm ${must ? 'must' : ''}" id="card-${c.pending_id}"><span class="tag">${esc(title)}</span> <span class="muted">${KJ[c.kind] || c.kind}${c.source && c.source.url ? '・出典 ' + esc(c.source.url) + '（' + esc((c.source.fetched_at || '').slice(0, 16)) + ' 取得）' : ''}</span>
-    <h3>${esc(title)}</h3>
-    ${diffs}
-    ${pick}<div class="when">反映：<b>${c.effective_from ? esc(c.effective_from) + ' から' : '承認したらすぐ（次のお客様から）'}</b></div>
-    ${c.warnings && c.warnings.length ? `<div style="color:var(--warn-ink)">⚠ ${c.warnings.map(esc).join(' / ')}</div>` : ''}
-    ${c.important ? `<div class="muted" style="margin-bottom:8px">料金・営業時間・支払い方法などの重要な変更は、パスワードの入力が必要です。<br>パスワード <input type="password" size="12" id="pw-${c.pending_id}" autocomplete="current-password"></div>` : ''}
-    <div class="actions"><button type="button" class="btn ok" onclick="approveCard('${c.pending_id}','${c.ops_hash}')">承認</button> <button type="button" class="btn no" onclick="rejectCard('${c.pending_id}')">取り消し</button></div>
-    <div id="cm-${c.pending_id}"></div></div>`;
+  return '<div class="card confirm ' + (must ? 'must' : '') + '" id="card-' + c.pending_id + '"><div class="muted" style="margin-bottom:6px">' + esc(KJ[c.kind] || '') + (c.source && c.source.url ? '・' + esc(c.source.url) : '') + '</div><h3>' + esc(title) + '</h3>' + diffs + pick +
+    '<div class="when">反映：<b>' + (c.effective_from ? esc(c.effective_from) + ' から' : 'OKしたらすぐ（次のお客様から）') + '</b></div>' +
+    (c.warnings && c.warnings.length ? '<div style="color:var(--warn-ink)">⚠ ' + c.warnings.map(esc).join(' / ') + '</div>' : '') +
+    (c.important ? '<div class="field"><label>料金・営業時間・支払い方法などの大切な変更は、パスワードが必要です</label><input type="password" class="fullin" id="pw-' + c.pending_id + '" autocomplete="current-password"></div>' : '') +
+    '<div class="actions"><button type="button" class="btn ok" onclick="approveCard(\'' + c.pending_id + '\',\'' + c.ops_hash + '\')">OK</button> <button type="button" class="btn no" onclick="rejectCard(\'' + c.pending_id + '\')">取り消す</button></div><div id="cm-' + c.pending_id + '"></div></div>';
 }
-function showCard(el, c) { if (!c.pending_id) { el.innerHTML = `<div class="muted">登録できる内容が見つかりませんでした。${esc((c.unclear || []).join('、'))}</div>`; return; } el.innerHTML = cardHtml(c); loadCardCount(); }
+function showCard(el, c) { if (!c.pending_id) { el.innerHTML = '<div class="muted">登録できる内容が見つかりませんでした。' + esc((c.unclear || []).join('、')) + '</div>'; return; } el.innerHTML = cardHtml(c); loadCardCount(); }
 async function approveCard(pid, h) {
   const pw = $('pw-' + pid); try { const r = await SK.post('/api/admin/approve', { pending_id: pid, ops_hash: h, password: pw ? pw.value : undefined });
-    $('cm-' + pid).innerHTML = `<b style="color:var(--ok-ink)">${esc(r.message)}</b>`; setTimeout(() => { loadQ(); if (CUR === 'cards') loadCards(); load(); }, 900); } catch (e) { $('cm-' + pid).innerHTML = `<span style="color:var(--danger-ink)">${esc(e.message)}</span>`; }
+    const el = $('cm-' + pid); if (el) el.innerHTML = '<b style="color:var(--ok-ink)">' + esc(r.message) + '</b>'; setTimeout(() => { loadQ(); if (CUR === 'cards' || CUR === 'data' || CUR === 'home') { if (CUR === 'cards') loadCards(); if (CUR === 'data') load(); if (CUR === 'home') loadHome(); } load(); }, 900); } catch (e) { const el = $('cm-' + pid); if (el) el.innerHTML = '<span style="color:var(--danger-ink)">' + esc(e.message) + '</span>'; }
 }
-async function rejectCard(pid) { await SK.post(`/api/admin/cards/${pid}/reject`, {}); CARDS = CARDS.filter(c => String(c.pending_id) !== String(pid)); if (CARD_I >= CARDS.length) CARD_I = Math.max(0, CARDS.length - 1); renderCardPane(); loadCardCount(); }
-async function loadCardCount() { try { const d = await SK.get('/api/admin/cards'); $('ncards').textContent = d.cards.length; return d; } catch (e) {} }
+async function rejectCard(pid) { await SK.post('/api/admin/cards/' + pid + '/reject', {}); CARDS = CARDS.filter(c => String(c.pending_id) !== String(pid)); if (CARD_I >= CARDS.length) CARD_I = Math.max(0, CARDS.length - 1); renderCardPane(); loadCardCount(); }
+async function loadCardCount() { try { const d = await SK.get('/api/admin/cards'); const n = (d.cards || []).length; const el = $('ncards'); if (el) { el.textContent = n; el.style.display = n ? '' : 'none'; } return d; } catch (e) {} }
 let CARDS = [], CARD_I = 0;
 function cardNav(d) { if (!CARDS.length) return; CARD_I = (CARD_I + d + CARDS.length) % CARDS.length; renderCardPane(); }
 function renderCardPane() {
-  const pg = $('pager');
-  if (!CARDS.length) { if (pg) pg.style.display = 'none'; $('cardlist').innerHTML = '<div class="muted">承認待ちのカードはありません。</div>'; return; }
+  const pg = $('pager'), box = $('pendingbox');
+  if (!CARDS.length) {
+    if (pg) pg.style.display = 'none';
+    $('cardlist').innerHTML = '';
+    if (box) box.innerHTML = '';
+    return;
+  }
   if (CARD_I >= CARDS.length) CARD_I = CARDS.length - 1;
   if (CARD_I < 0) CARD_I = 0;
-  if (pg) pg.style.display = 'flex';
+  if (pg) pg.style.display = CARDS.length > 1 ? 'flex' : 'none';
   $('cardpos').textContent = (CARD_I + 1) + '/' + CARDS.length;
   $('cardlist').innerHTML = cardHtml(CARDS[CARD_I]);
+  if (box) box.innerHTML = '<div class="muted" style="margin-bottom:8px">先に、こちらの変更を確認してください（' + CARDS.length + '件）</div>';
 }
 async function loadCards() {
   const d = await loadCardCount(); if (!d) return;
   CARDS = d.cards || []; if (CARD_I >= CARDS.length) CARD_I = Math.max(0, CARDS.length - 1);
   renderCardPane();
-  try { const st = await SK.get('/api/admin/store'); applyTheme(st.store && st.store.theme); if (CUR === 'more') renderThemePicker(document.documentElement.dataset.theme); $('tiers').innerHTML = st.price_tiers.length ? '登録済み：' + st.price_tiers.map(t => `<b>${esc(t.name)}</b>（${esc(t.aliases || '')}）・区分付きの料金 ${st.prices.filter(p => p.tier === t.name).length}件`).join('／') + '<br>編集は同じ区分名で作り直すと「変更前→変更後」カードになります。削除は「店舗情報」タブから。' : '登録済みの区分はありません（二重価格のない店はこのままで大丈夫です）。'; } catch (e) {}
-  $('schedlist').innerHTML = d.scheduled.length ? d.scheduled.map(x => `${esc(x.effective_date)} から：${esc(x.summary.replace('登録内容を確認します。', '').replace(/保存してよろしいですか？/, ''))} <button onclick="cancelSched(${x.id})">予約を取り消す</button>`).join('<br>') : '（なし）';
+  try {
+    const st = await SK.get('/api/admin/store'); applyTheme(st.store && st.store.theme); STORE = st;
+    if (CUR === 'more') renderThemePicker(document.documentElement.dataset.theme);
+    const el = $('tiers');
+    if (el) el.innerHTML = st.price_tiers.length ? '登録済み：' + st.price_tiers.map(t => '<b>' + esc(t.name) + '</b>（' + esc(t.aliases || '') + '）').join('／') : '登録済みの区分はありません。';
+  } catch (e) {}
+  $('schedlist').innerHTML = (d.scheduled && d.scheduled.length) ? d.scheduled.map(x => '<div class="item-row" style="cursor:default"><div class="body"><div class="name">' + esc(x.effective_date) + ' から</div><div class="muted">' + esc((x.summary || '').replace('登録内容を確認します。', '').replace(/保存してよろしいですか？/g, '')) + '</div></div><button type="button" onclick="cancelSched(' + x.id + ')">取り消す</button></div>').join('') : '<div class="muted">（なし）</div>';
 }
-
-async function sendPhoto() {
-  const f = $('photo').files[0]; if (!f) { $('photomsg').textContent = '写真を選んでください。'; return; }
-  $('photomsg').textContent = '読み取っています…（10〜20秒）';
+function showImport(r) {
+  const el = $('importprev'); if (!el) return;
+  const n = (r.cards || []).length;
+  const lines = [];
+  (r.cards || []).forEach(c => (c.diff || []).forEach(d => lines.push(esc(d.item) + '：' + esc(d.after == null || d.after === '' ? '（なし）' : d.after))));
+  el.innerHTML = '<div class="preview"><b>読み取った内容</b>（OKするまでお客様への回答には使いません）' + (lines.length ? '<ul>' + lines.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '<div class="muted">変更案は「変更・追加」にあります。</div>') + (n ? '<button type="button" class="cta" onclick="tab(\'cards\')">変更案を確認する</button>' : '') + '</div>';
+}
+async function sendPhoto() { return sendPhotoFrom('photo'); }
+async function sendPhotoFrom(fid) {
+  const f = $(fid) && $(fid).files[0]; if (!f) { if ($('photomsg')) $('photomsg').textContent = '写真を選んでください。'; return; }
+  if ($('photomsg')) $('photomsg').textContent = '読み取っています…（少し時間がかかることがあります）';
   try {
     const img = await createImageBitmap(f), k = Math.min(1, 1600 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
     cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
     const b64 = cv.toDataURL('image/jpeg', 0.85);
     const r = await SK.post('/api/admin/photo', { image_b64: b64, filename: f.name });
-    $('photomsg').innerHTML = `読み取った項目 ${r.n_items}件 → 確認カード ${r.cards.length}枚（登録案 ${r.n_ops}件）。` + (r.excluded.length ? `<br>根拠が確かめられず除外：${r.excluded.map(x => esc(x.name || x.kind) + '（' + esc(x.flags.join('・')) + '）').join('、')}` : '') +
-      (r.unchanged && r.unchanged.length ? `<br>登録済みと同じなのでカードにしなかった項目：${r.unchanged.map(esc).join('、')}` : '') + (r.conflicts && r.conflicts.length ? `<br><b style="color:#b45309">食い違い・読めない箇所：</b>${r.conflicts.map(esc).join(' / ')}` : '');
-    $('photo').value = ''; loadCards();
-  } catch (e) { $('photomsg').textContent = e.message; }
+    if ($('photomsg')) $('photomsg').textContent = '読み取りました。下の変更案を確認してください。';
+    $(fid).value = ''; showImport(r); tab('cards'); loadCards();
+  } catch (e) { if ($('photomsg')) $('photomsg').textContent = e.message; }
 }
 async function narrowCard(pid) {
-  const keep = [...document.querySelectorAll(`input[data-card="${pid}"]:checked`)].map(x => +x.value);
-  try { await SK.post(`/api/admin/cards/${pid}/narrow`, { keep }); loadCards(); } catch (e) { alert(e.message); }
+  const keep = [...document.querySelectorAll('input[data-card="' + pid + '"]:checked')].map(x => +x.value);
+  try { await SK.post('/api/admin/cards/' + pid + '/narrow', { keep }); loadCards(); } catch (e) { alert(e.message); }
 }
-async function proposeTier() { try { const r = await SK.post('/api/admin/tiers/propose', { name: $('tiername').value, aliases: $('tieral').value }); $('tiername').value = ''; $('tieral').value = ''; loadCards(); } catch (e) { alert(e.message); } }
-async function cancelSched(id) { await SK.post(`/api/admin/scheduled/${id}/cancel`, {}); loadCards(); }
-async function sendChange() { const t = $('chg').value.trim(); if (!t) return; $('chgmsg').textContent = 'カードを作っています…'; try { const r = await SK.post('/api/admin/voice', { text: t }); $('chgmsg').textContent = r.pending_id ? '下にカードを作りました。内容を確認して承認してください。' : '登録できる内容が見つかりませんでした。'; $('chg').value = ''; loadCards(); } catch (e) { $('chgmsg').textContent = e.message; } }
-// ブラウザ標準の音声入力（Web Speech API・無料）。対応していないブラウザでは文字入力だけ
-function stt(input, btn) {
+async function proposeTier() { try { await SK.post('/api/admin/tiers/propose', { name: $('tiername').value, aliases: $('tieral').value }); $('tiername').value = ''; $('tieral').value = ''; loadCards(); } catch (e) { alert(e.message); } }
+async function cancelSched(id) { await SK.post('/api/admin/scheduled/' + id + '/cancel', {}); loadCards(); }
+async function sendChange() { const t = $('chg').value.trim(); if (!t) return; $('chgmsg').textContent = '変更案を作っています…'; try { const r = await SK.post('/api/admin/voice', { text: t }); $('chgmsg').textContent = r.pending_id ? '下の変更案を確認して、よければ「OK」を押してください。' : '登録できる内容が見つかりませんでした。'; $('chg').value = ''; loadCards(); } catch (e) { $('chgmsg').textContent = e.message; } }
+function stt(input, btn, ondone) {
   const R = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!R) { alert('このブラウザは標準の音声入力に対応していません。文字で入力してください。'); return; }
   const r = new R(); r.lang = 'ja-JP'; r.interimResults = true; const before = input.value;
   r.onresult = e => { input.value = (before ? before + ' ' : '') + [...e.results].map(x => x[0].transcript).join(''); };
-  r.onend = () => { btn.textContent = '🎤'; }; r.onerror = e => { btn.textContent = '🎤'; if (e.error !== 'no-speech') alert('音声入力: ' + e.error); };
-  btn.textContent = '● 聞いています'; r.start();
+  r.onend = () => { if (btn) btn.textContent = 'マイク'; if (ondone) ondone(); };
+  r.onerror = e => { if (btn) btn.textContent = 'マイク'; if (e.error !== 'no-speech') alert('音声入力: ' + e.error); };
+  if (btn) btn.textContent = '聞いています'; r.start();
 }
-// 成長カード（実数のみ）
-async function loadGrowth() {
-  let g; try { g = await SK.get('/api/admin/growth'); } catch (e) { return; }
-  const s = g.series, mx = Math.max(1, ...s.map(x => Math.max(x.owner_handled + x.owner_changes, x.needs_owner))), t = s[s.length - 1], tr = g.trend, ct = g.counts || {}, mg = g.merges || {};
-  const bars = (key, color) => '<div class="bars">' + s.map(x => { const v = typeof key === 'function' ? key(x) : x[key]; return `<div class="${v ? '' : 'z'}" title="${x.day} ${v}件" style="height:${Math.round(v / mx * 60)}px;background:${color}"></div>`; }).join('') + '</div>';
-  const pct = v => v == null ? '—' : Math.round(v * 100) + '%';
-  const chg = v => v == null ? '' : (v <= 0 ? `<b style="color:#166534">${Math.round(-v * 100)}%減</b>` : `<b style="color:#b45309">${Math.round(v * 100)}%増</b>`);
-  $('growth').innerHTML = `<h2>成長カード <span class="muted">過去14日・実数（推計なし）</span></h2><div class="grow">
-    <div><div class="muted">この7日の回答率</div><div class="big">${pct(tr.cur.answer_rate)}</div><div class="muted">初期値 ${pct(g.baseline.answer_rate)}${tr.answer_rate_vs_baseline == null ? '' : '（' + (tr.answer_rate_vs_baseline >= 0 ? '+' : '') + Math.round(tr.answer_rate_vs_baseline * 100) + 'ポイント）'}<br>前の7日 ${pct(tr.prev.answer_rate)}</div></div>
-    <div><div class="muted">店長の手間（対応が必要になった質問・日別）</div>${bars('needs_owner', '#f59e0b')}<div class="muted">前の7日 ${tr.prev.needs_owner}件 → この7日 ${tr.cur.needs_owner}件 ${chg(tr.needs_owner_change)}</div></div>
-    <div><div class="muted">店長が対応した件数（回答＋変更・日別）</div>${bars(x => x.owner_handled + x.owner_changes, '#60a5fa')}<div class="muted">前の7日 ${tr.prev.owner_work}件 → この7日 ${tr.cur.owner_work}件 ${chg(tr.owner_work_change)}</div></div>
-    <div><div class="muted">いまの質問（まとめた件数）</div><div><span class="badge b-red">未回答 ${ct.unanswered || 0}</span><span class="badge b-warn">要確認 ${ct.review || 0}</span><span class="badge b-ok">回答済み ${ct.answered || 0}</span></div>
-      <div class="muted" style="margin-top:6px">同じ内容の質問をまとめました：${mg.questions || 0}件 → ${mg.groups || 0}まとまり（${mg.merged || 0}件を統合）</div></div></div>
-    <div class="muted" style="margin-top:6px">${esc(g.baseline.note)}</div>`;
+async function loadHome() {
+  let g, cards = 0;
+  try { g = await SK.get('/api/admin/growth'); } catch (e) { return; }
+  try { const d = await loadCardCount(); cards = (d && d.cards || []).length; } catch (e) {}
+  const today = (g.series || [])[g.series.length - 1] || { questions: 0, answered: 0 };
+  const un = (g.counts && g.counts.unanswered) || 0;
+  const rv = (g.counts && g.counts.review) || 0;
+  const qn = today.questions || 0;
+  const missed = Math.max(0, (today.questions || 0) - (today.answered || 0));
+  let cta = '', hint = '';
+  if (un > 0) { cta = '<button type="button" class="cta" onclick="tab(\'q\');qtab(\'unanswered\')">答えられなかった質問に答える（' + un + '件）</button>'; }
+  else if (rv > 0) { cta = '<button type="button" class="cta" onclick="tab(\'q\');qtab(\'review\')">要確認の質問を見る（' + rv + '件）</button>'; }
+  else if (cards > 0) { cta = '<button type="button" class="cta" onclick="tab(\'cards\')">変更を確認する（' + cards + '件）</button>'; }
+  else { cta = '<div class="okmsg">今すぐやることはありません</div><button type="button" class="cta sub" onclick="tab(\'cards\')">変更・追加する</button>'; }
+  $('today').innerHTML = '<div class="today"><div class="stat"><span class="n">' + qn + '</span><span class="l">今日の接客</span></div><div class="stat"><span class="n' + (un ? ' warn' : '') + '">' + un + '</span><span class="l">答えられなかった</span></div><div class="stat"><span class="n' + (cards ? ' warn' : '') + '">' + cards + '</span><span class="l">確認する変更</span></div></div>' + cta;
 }
 SK.get('/api/me').then(j => j.account.role === 'owner' && (!ADMIN_SLUG || (j.store && j.store.slug === ADMIN_SLUG)) && start(j.store, j.account)).catch(() => {});
 </script></body></html>

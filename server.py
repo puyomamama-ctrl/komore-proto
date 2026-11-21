@@ -5,7 +5,7 @@
 """
 import base64, io, json, os, re, sqlite3, sys, threading, time, urllib.parse, wave
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-import core, audit, guard, photo_import
+import core, audit, guard, photo_import, web_import
 import accounts as A
 
 HOST = os.environ.get('SK_HOST', '127.0.0.1')
@@ -119,7 +119,7 @@ class H(BaseHTTPRequestHandler):
             sid = o['store_id']
             with core.db() as c:
                 hist = [dict(r) for r in c.execute('SELECT id,ts,source,action,table_name,row_id,before_json,after_json FROM history WHERE store_id=? ORDER BY id DESC LIMIT 100', (sid,))]
-                conv = [dict(r) for r in c.execute('SELECT id,ts,mode,lang,question,status,fact_ids,timings_json,cost_usd FROM conversations WHERE store_id=? ORDER BY id DESC LIMIT 200', (sid,))]
+                conv = [dict(r) for r in c.execute('SELECT id,ts,mode,lang,question,answer,status,fact_ids,timings_json,cost_usd FROM conversations WHERE store_id=? ORDER BY id DESC LIMIT 200', (sid,))]
                 stats = dict(c.execute("""SELECT COUNT(*) n, SUM(status NOT LIKE 'answered%') unanswered, SUM(cost_usd) cost
                                           FROM conversations WHERE store_id=? AND mode='kiosk'""", (sid,)).fetchone())
                 staff = [dict(r) for r in c.execute('SELECT * FROM staff_calls WHERE store_id=? ORDER BY id DESC LIMIT 50', (sid,))]
@@ -352,6 +352,25 @@ class H(BaseHTTPRequestHandler):
         if m:   # 取り込みカードを項目ごとに選ぶ（チェックした項目だけ残す）。AIは使わない
             try: return self._send(200, core.narrow_card(sid, m.group(1), body.get('keep') or [], owner['id']))
             except ValueError as e: return self._send(400, {'error': str(e)})
+
+        if p == '/api/admin/web':   # URLから取り込み → 変更案（承認まで反映しない）
+            url = str(body.get('url') or '').strip()
+            if not re.match(r'https?://', url, re.I):
+                return self._send(400, {'error': 'http または https のURLを入れてください'})
+            try: tk = guard.begin_turn(sid, 'owner', '', self._ip())
+            except guard.Denied as d: return self._denied_admin(d)
+            err = False; cost = 0.0
+            try:
+                r = web_import.propose_from_web(sid, url, owner['id']); cost = r.get('cost_usd', 0.0)
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
+            except Exception:
+                err = True; raise
+            finally:
+                guard.end_turn(tk, actual_yen=cost * guard.fx(), error=err)
+            with core.db() as c: audit.log(c, 'change_proposed', sid, owner['id'], f"via=web cards={len(r.get('cards') or [])} n={len(r.get('ops') or [])}")
+            keys = ('cards', 'confirm_text', 'conflicts', 'rejected_ops', 'n_items', 'excluded', 'cost_usd', 'usage', 'unchanged')
+            return self._send(200, {k: r[k] for k in keys if k in r} | {'n_ops': len(r.get('ops') or [])})
         if p == '/api/admin/photo':   # 区切りE：写真から取り込み → 確認カード（承認まで反映しない）
             try: raw = base64.b64decode(str(body.get('image_b64') or '').split(',')[-1], validate=False)
             except Exception: return self._send(400, {'error': '画像を読めませんでした'})
