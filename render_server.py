@@ -14,6 +14,9 @@ if os.environ.get('DEMO_NO_AUTH') == '1':
     def _demo_acct(self):
         a = _orig_acct(self)
         if a: return a
+        want = (self.headers.get('X-Komore-Store') or '').strip()
+        if want and want != DEMO_SLUG:
+            return None   # yavay など専用店長画面ではデモ酒場に自動で入らない
         st = core.store_by_slug(DEMO_SLUG)
         if not st: return None
         with core.db() as c:

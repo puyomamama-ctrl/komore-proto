@@ -50,7 +50,7 @@ a{color:var(--accent-dark);}
 }
 .k-a,.a{
   margin:0;color:var(--ink);font-weight:700;line-height:1.45;
-  overflow:hidden;word-break:normal;overflow-wrap:break-word;line-break:strict;
+  overflow:hidden;word-break:normal;word-break:auto-phrase;overflow-wrap:break-word;line-break:strict;text-wrap:pretty;
 }
 .k-dock{
   position:absolute;left:0;right:0;top:50%;bottom:0;

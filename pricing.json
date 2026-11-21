@@ -45,5 +45,10 @@
         "included_minutes": 1200
       }
     }
+  },
+  "stt-async-v6": {
+    "per_sec": 2.777777777777778e-05,
+    "src": "https://soniox.com/pricing",
+    "note": "async $0.10/hour (2026-11-21 public list). 1日上限の円計算に含める"
   }
 }

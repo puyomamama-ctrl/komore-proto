@@ -58,18 +58,26 @@ SK.playPcmStream = async (url, body, onFirst) => {
 SK.speakLocal = (text, lang) => new Promise(res => { const u = new SpeechSynthesisUtterance(text); u.lang = lang === 'en' ? 'en-US' : 'ja-JP'; u.onend = res; u.onerror = res; speechSynthesis.cancel(); speechSynthesis.speak(u); });
 // 端末ID：この端末のブラウザに保存するランダム値（登録コードで店員アカウントに紐付く。安全管理用で料金とは無関係）
 SK.deviceId = () => { let d = localStorage.getItem('sk_device'); if (!d) { d = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); localStorage.setItem('sk_device', d); } return d; };
-SK.hdr = () => ({ 'Content-Type': 'application/json', 'X-SK-Device': SK.deviceId() });
+SK.adminSlug = () => { const m = (location.pathname || '').match(/^\/admin\/([a-z0-9-]+)$/); return m ? m[1] : ''; };
+SK.hdr = () => {
+  const h = { 'Content-Type': 'application/json', 'X-SK-Device': SK.deviceId() };
+  const s = SK.adminSlug();
+  if (s) h['X-Komore-Store'] = s;
+  return h;
+};
 SK.post = async (url, body) => { const r = await fetch(url, { method: 'POST', headers: SK.hdr(), body: JSON.stringify(body) }); const j = await r.json(); if (!r.ok) { const e = new Error(j.error || r.status); e.code = j.code; e.status = r.status; throw e; } return j; };
 SK.get = async url => { const r = await fetch(url, { headers: SK.hdr() }); const j = await r.json(); if (!r.ok) { const e = new Error(j.error || r.status); e.status = r.status; throw e; } return j; };
 // ログイン／登録コード登録の共通フォーム（店舗ID＋パスワード。新端末は登録コード）
-SK.authBox = (el, { slug = '', onDone }) => {
+SK.authBox = (el, { slug = '', onDone, lockSlug = false }) => {
+  const sl = slug || '';
+  const ro = lockSlug && sl ? ' readonly' : '';
   el.innerHTML = `<div><b>ログイン</b>（店舗ID ＋ アカウントのパスワード）<br>
-    店舗ID <input id="a_slug" value="${slug}" size="12"> パスワード <input id="a_pw" type="password" size="14"> <button id="a_login">ログイン</button></div>
+    店舗ID <input id="a_slug" value="${sl}" size="12"${ro}> パスワード <input id="a_pw" type="password" size="14"> <button id="a_login">ログイン</button></div>
     <details style="margin-top:8px"><summary>新しい端末・アカウントを登録（オーナーから受け取った登録コード）</summary>
-    店舗ID <input id="r_slug" value="${slug}" size="12"> 登録コード <input id="r_code" size="12" placeholder="XXXXXXXXXX"><br>
+    店舗ID <input id="r_slug" value="${sl}" size="12"${ro}> 登録コード <input id="r_code" size="12" placeholder="XXXXXXXXXX"><br>
     アカウント名 <input id="r_name" size="10" placeholder="例: 山田"> 新しいパスワード(8文字以上) <input id="r_pw" type="password" size="14"> <button id="r_go">登録</button></details>
     <div id="a_msg" style="color:#b91c1c;font-size:13px;margin-top:6px"></div>`;
   const g = id => el.querySelector('#' + id), msg = t => g('a_msg').textContent = t;
-  g('a_login').onclick = async () => { try { onDone(await SK.post('/api/login', { slug: g('a_slug').value.trim(), password: g('a_pw').value, device_id: SK.deviceId() })); } catch (e) { msg(e.message); } };
-  g('r_go').onclick = async () => { try { onDone(await SK.post('/api/register', { slug: g('r_slug').value.trim(), code: g('r_code').value, password: g('r_pw').value, name: g('r_name').value, device_id: SK.deviceId(), device_label: navigator.userAgent.slice(0, 40) })); } catch (e) { msg(e.message); } };
+  g('a_login').onclick = async () => { try { onDone(await SK.post('/api/login', { slug: (lockSlug && sl) || g('a_slug').value.trim(), password: g('a_pw').value, device_id: SK.deviceId() })); } catch (e) { msg(e.message); } };
+  g('r_go').onclick = async () => { try { onDone(await SK.post('/api/register', { slug: (lockSlug && sl) || g('r_slug').value.trim(), code: g('r_code').value, password: g('r_pw').value, name: g('r_name').value, device_id: SK.deviceId(), device_label: navigator.userAgent.slice(0, 40) })); } catch (e) { msg(e.message); } };
 };

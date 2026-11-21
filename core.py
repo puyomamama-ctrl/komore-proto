@@ -1,7 +1,7 @@
 """スマホAI接客 試作品 コア（DB・店舗データ・LLM/STT/TTS・回答ガード・音声登録）
-鍵は環境変数 DASHSCOPE_API_KEY / GEMINI_API_KEY からのみ読む。ファイル・ログに書かない。
+鍵は環境変数 DASHSCOPE_API_KEY / GEMINI_API_KEY / SONIOX_API_KEY からのみ読む。ファイル・ログに書かない。ブラウザには渡さない。
 """
-import base64, contextlib, datetime, hashlib, json, os, re, secrets, sqlite3, threading, time, urllib.request, urllib.error
+import base64, contextlib, datetime, hashlib, io, json, os, re, secrets, sqlite3, threading, time, urllib.request, urllib.error, wave
 import spend, sys, unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -500,17 +500,21 @@ def llm_json(system, user, model=None, store_id=None, purpose='', max_out=700):
     data = json.loads(m.group()) if m else {}
     return data, {'model': model, 'ms': round(ms), 'usage': usage, 'cost_usd': cost}
 
-def asr_glossary(store_id=None):
-    """音声認識に渡す店名・予約経路などの語彙ヒント（Qwen3-ASR の system コンテキスト）。"""
-    words = ['Klook', 'Japan Ticket', 'ジャパンチケット', 'クルック', 'YAVAY', 'ヤバイ']
+def asr_terms(store_id=None, limit=80):
+    """音声認識に渡す固有名詞（店名、メニュー、料金プラン、予約経路の別名）。"""
+    words = ['Klook', 'Japan Ticket', 'ジャパンチケット', 'ジャパチケ', 'クルック', 'クルクル', 'クルクルス',
+             'YAVAY', 'YAVAY PLAN', 'ヤバイ', 'ヤバイプラン', 'それ以外']
     if store_id:
         try:
             d = store_data(store_id)
             nm = (d.get('store') or {}).get('name')
-            if nm: words.append(nm)
+            if nm:
+                words.append(nm)
             for tr in d.get('price_tiers') or list_tiers(store_id):
                 words.append(tr.get('name') or '')
                 words.extend(x for x in (tr.get('aliases') or '').split(',') if x.strip())
+            for r in (d.get('menu') or []) + (d.get('prices') or []):
+                words.append(r.get('name') or '')
         except Exception:
             pass
     seen, out = set(), []
@@ -518,9 +522,118 @@ def asr_glossary(store_id=None):
         w = str(w or '').strip()
         if w and w.lower() not in seen:
             seen.add(w.lower()); out.append(w)
-    return '語彙（優先して認識）: ' + '、'.join(out[:40])
+        if len(out) >= limit:
+            break
+    return out
 
-def asr(audio_bytes, mime='audio/webm', lang=None, store_id=None, purpose=''):
+def asr_glossary(store_id=None):
+    """Qwen3-ASR の system コンテキスト用の語彙ヒント。"""
+    terms = asr_terms(store_id)
+    return '語彙（優先して認識）: ' + '、'.join(terms) if terms else ''
+
+def _audio_len_sec(audio_bytes, mime=''):
+    if (audio_bytes or b'')[:4] == b'RIFF':
+        try:
+            with wave.open(io.BytesIO(audio_bytes)) as w:
+                n, r = w.getnframes(), float(w.getframerate() or 1)
+                if r:
+                    return max(0.1, n / r)
+        except Exception:
+            pass
+    return max(0.5, len(audio_bytes or b'') / 4000.0)
+
+def _soniox_req(method, path, body=None, headers=None, timeout=30):
+    """Soniox HTTP。Authorization はログに出さない。"""
+    key = os.environ.get('SONIOX_API_KEY') or ''
+    if not key:
+        raise RuntimeError('SONIOX_API_KEY missing')
+    h = {'Authorization': 'Bearer ' + key}
+    h.update(headers or {})
+    req = urllib.request.Request('https://api.soniox.com/v1' + path, data=body, headers=h, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as f:
+            raw = f.read(); return f.status, raw
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+def _asr_soniox(audio_bytes, mime='audio/webm', lang=None, store_id=None, purpose=''):
+    """録音後の非同期ファイル認識（stt-async-v6）。キーはサーバーの環境変数のみ。"""
+    require_priced('stt-async-v6')
+    spend.check('stt-async-v6')
+    t0 = time.time()
+    ext = 'wav' if (audio_bytes or b'')[:4] == b'RIFF' else ('webm' if 'webm' in (mime or '') else 'ogg' if 'ogg' in (mime or '') else 'm4a' if 'mp4' in (mime or '') or 'm4a' in (mime or '') else 'bin')
+    ctype = mime or 'application/octet-stream'
+    terms = asr_terms(store_id)
+    store_nm = ''
+    if store_id:
+        try:
+            s = (store_data(store_id).get('store') or {})
+            store_nm = s.get('name') or s.get('slug') or ''
+        except Exception:
+            pass
+    ctx = {'terms': terms, 'general': [
+        {'key': 'domain', 'value': '飲食店の接客。予約経路は Klook、Japan Ticket、それ以外。'},
+    ]}
+    if store_nm:
+        ctx['general'].insert(0, {'key': 'store', 'value': store_nm})
+    b = secrets.token_hex(16)
+    fname = 'utterance.' + ext
+    body = (
+        f'--{b}\r\nContent-Disposition: form-data; name="file"; filename="{fname}"\r\n'
+        f'Content-Type: {ctype}\r\n\r\n'
+    ).encode() + audio_bytes + f'\r\n--{b}--\r\n'.encode()
+    s, r = _soniox_req('POST', '/files', body, {'Content-Type': f'multipart/form-data; boundary={b}'})
+    if s not in (200, 201):
+        raise RuntimeError(f'soniox upload {s}')
+    fid = json.loads(r)['id']
+    tid = None
+    try:
+        payload = {
+            'model': 'stt-async-v6',
+            'file_id': fid,
+            'language_hints': [lang or 'ja'],
+            'language_hints_strict': True,
+            'context': ctx,
+        }
+        s, r = _soniox_req('POST', '/transcriptions', json.dumps(payload).encode(), {'Content-Type': 'application/json'})
+        if s not in (200, 201):
+            raise RuntimeError(f'soniox create {s}')
+        tid = json.loads(r)['id']
+        st, deadline = None, t0 + 15
+        while time.time() < deadline:
+            s, r = _soniox_req('GET', f'/transcriptions/{tid}')
+            st = json.loads(r)
+            if st.get('status') in ('completed', 'error'):
+                break
+            time.sleep(0.2)
+        else:
+            raise RuntimeError('soniox timeout')
+        if not st or st.get('status') != 'completed':
+            raise RuntimeError('soniox ' + str((st or {}).get('error_type') or st.get('status') if st else 'error'))
+        s, r = _soniox_req('GET', f'/transcriptions/{tid}/transcript')
+        if s != 200:
+            raise RuntimeError(f'soniox transcript {s}')
+        tr = json.loads(r)
+        text = (tr.get('text') or '').strip()
+        dur_ms = st.get('audio_duration_ms')
+        seconds = (dur_ms / 1000.0) if isinstance(dur_ms, (int, float)) and dur_ms > 0 else _audio_len_sec(audio_bytes, mime)
+        usage = {'seconds': round(seconds, 3)}
+        ms = (time.time() - t0) * 1000
+        cost = log_call('asr', 'stt-async-v6', ms, usage, store_id, None, purpose or 'asr')
+        spend.record('stt-async-v6', usage, purpose or 'asr')
+        return text, {'model': 'stt-async-v6', 'ms': round(ms), 'usage': usage, 'cost_usd': cost, 'lang': lang or 'ja'}
+    finally:
+        try:
+            if tid:
+                _soniox_req('DELETE', f'/transcriptions/{tid}')
+        except Exception:
+            pass
+        try:
+            _soniox_req('DELETE', f'/files/{fid}')
+        except Exception:
+            pass
+
+def _asr_qwen(audio_bytes, mime='audio/webm', lang=None, store_id=None, purpose=''):
     require_priced('qwen3-asr-flash')
     t = time.time()
     messages = []
@@ -534,12 +647,21 @@ def asr(audio_bytes, mime='audio/webm', lang=None, store_id=None, purpose=''):
     j = _post(DS_BASE + '/compatible-mode/v1/chat/completions', body, _ds_headers(), purpose=purpose or 'asr')
     ms = (time.time() - t) * 1000
     u = j.get('usage', {})
-    usage = {'seconds': u.get('seconds', 0)}
+    usage = {'seconds': u.get('seconds', 0) or _audio_len_sec(audio_bytes, mime)}
     cost = log_call('asr', 'qwen3-asr-flash', ms, usage, store_id, None, purpose)
     text = j['choices'][0]['message']['content'] or ''
     ann = j['choices'][0]['message'].get('annotations') or []
     alang = next((a.get('language') for a in ann if a.get('language')), None)
     return text.strip(), {'model': 'qwen3-asr-flash', 'ms': round(ms), 'usage': usage, 'cost_usd': cost, 'lang': alang}
+
+def asr(audio_bytes, mime='audio/webm', lang=None, store_id=None, purpose=''):
+    """接客の既定は Soniox（日本語・店の語彙を context に渡す）。失敗したら Qwen3-ASR-Flash。鍵はサーバーのみ。"""
+    if os.environ.get('SONIOX_API_KEY'):
+        try:
+            return _asr_soniox(audio_bytes, mime, lang, store_id, purpose)
+        except Exception as e:
+            sys.stderr.write(f'soniox asr failed, fallback qwen: {type(e).__name__}\n')
+    return _asr_qwen(audio_bytes, mime, lang, store_id, purpose)
 
 def tts_stream(text, lang='ja'):
     """qwen3-tts-flash SSE → 24kHz s16le PCMチャンクを順に返す。最後に ('done', info) を返す。"""

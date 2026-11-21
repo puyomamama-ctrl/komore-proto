@@ -90,7 +90,23 @@ const COLS = { hours: ['weekday(0=月..6=日)', 'open', 'close', 'closed', 'note
 const JA = { hours: '曜日別営業時間', special_hours: '臨時休業・特別営業', prices: '料金（期間限定は日付）', menu: 'メニュー', payments: '支払い方法', faqs: 'その他の案内', profile: '店のキャラ（一人客・デート・おすすめ等）', price_tiers: '料金の区分（二重価格：例 予約経路 Japan Ticket/Klook とそれ以外）' };
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function onAuth(j) { if (j.account.role !== 'owner') { SK.post('/api/logout', {}); $('lmsg').innerHTML = `店員アカウントです。店舗情報の変更はオーナーのみ。<a href="/k/${j.store.slug}">接客画面</a>はこの端末でログイン済みなら使えます（再ログインが必要な場合あり）。`; return; } start(j.store, j.account); }
-SK.authBox($('authbox'), { onDone: onAuth });
+const ADMIN_SLUG = (typeof SK.adminSlug === 'function' && SK.adminSlug()) || '';
+if (ADMIN_SLUG) {
+  document.title = '店長モード（' + ADMIN_SLUG + '）';
+  const hb = document.querySelector('.a-header b');
+  if (hb) hb.textContent = '店長モード（' + ADMIN_SLUG + '）';
+  const cr = document.querySelector('#login details');
+  if (cr) cr.classList.add('hide');
+}
+function onAuthGate(j) {
+  if (ADMIN_SLUG && j.store && j.store.slug !== ADMIN_SLUG) {
+    SK.post('/api/logout', {});
+    $('lmsg').textContent = 'この画面は「' + ADMIN_SLUG + '」の店長用です。店舗が違います。';
+    return;
+  }
+  onAuth(j);
+}
+SK.authBox($('authbox'), { slug: ADMIN_SLUG, lockSlug: !!ADMIN_SLUG, onDone: onAuthGate });
 async function createStore() { try { await SK.post('/api/stores', { name: $('nname').value, slug: $('nslug').value.trim(), category: $('ncat').value, owner_password: $('npw').value }); $('lmsg').textContent = '作成しました。店舗IDとパスワードでログインしてください'; } catch (e) { $('lmsg').textContent = e.message; } }
 async function logout() { await SK.post('/api/logout', {}); location.reload(); }
 function applyTheme(th) { document.documentElement.dataset.theme = (th === 'mint' || th === 'dark') ? th : 'sakura'; }
@@ -333,5 +349,5 @@ async function loadGrowth() {
       <div class="muted" style="margin-top:6px">同じ内容の質問をまとめました：${mg.questions || 0}件 → ${mg.groups || 0}まとまり（${mg.merged || 0}件を統合）</div></div></div>
     <div class="muted" style="margin-top:6px">${esc(g.baseline.note)}</div>`;
 }
-SK.get('/api/me').then(j => j.account.role === 'owner' && start(j.store, j.account)).catch(() => {});
+SK.get('/api/me').then(j => j.account.role === 'owner' && (!ADMIN_SLUG || (j.store && j.store.slug === ADMIN_SLUG)) && start(j.store, j.account)).catch(() => {});
 </script></body></html>

@@ -67,7 +67,7 @@ class H(BaseHTTPRequestHandler):
         p = urllib.parse.urlparse(self.path).path
         if p in ('/', '/index.html'):
             return self._file('index.html')
-        if p == '/admin':
+        if p == '/admin' or re.fullmatch(r'/admin/[a-z0-9-]+', p):
             return self._file('admin.html')
         if re.fullmatch(r'/k/[a-z0-9-]+', p):
             return self._file('kiosk.html')
@@ -220,7 +220,7 @@ class H(BaseHTTPRequestHandler):
         try:
             if audio:
                 q, ai = core.asr(audio[0], audio[1], None, sid, 'kiosk_asr')
-                timings['asr_ms'] = ai['ms']; usage['asr_sec'] = ai['usage']['seconds']; cost += ai['cost_usd']
+                timings['asr_ms'] = ai['ms']; usage['asr_sec'] = ai['usage']['seconds']; usage['asr_model'] = ai.get('model'); cost += ai['cost_usd']
             else:
                 q = str(body.get('text') or '')
                 timings['asr_ms'] = 0; usage['asr_sec'] = 0
@@ -251,9 +251,12 @@ class H(BaseHTTPRequestHandler):
         yen = cost * guard.fx()
         guard.end_turn(tk, actual_yen=yen + guard.tts_est_yen(len(res['answer'])), actual_sec=usage.get('asr_sec', 0) + len(res['answer']) / 5,
                        error=err, question=q, status=res['status'] + ':' + res['reason'])
-        return self._send(200, {'conv_id': cid, 'tts_token': tok, 'question': q, 'answer': res['answer'], 'status': res['status'],
-                                'reason': res['reason'], 'lang': res['lang'], 'fact_ids': res['fact_ids'], 'timings': timings, 'cost_usd': cost,
-                                'staff_call': res['status'] != 'answered', 'clarify': res.get('reason') == 'clarify'})
+        out = {'conv_id': cid, 'tts_token': tok, 'question': q, 'answer': res['answer'], 'status': res['status'],
+               'reason': res['reason'], 'lang': res['lang'], 'fact_ids': res['fact_ids'], 'timings': timings, 'cost_usd': cost,
+               'staff_call': res['status'] != 'answered', 'clarify': res.get('reason') == 'clarify'}
+        if audio:
+            out['stt'] = {'model': (usage.get('asr_model') or ''), 'ms': timings.get('asr_ms')}
+        return self._send(200, out)
 
     def _tts(self, store_id, body):
         """サーバーが作った文だけ読み上げる（tts_token必須・1回限り・30秒で失効）。24kHz s16le をチャンク転送。"""
