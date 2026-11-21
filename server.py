@@ -5,7 +5,7 @@
 """
 import base64, io, json, os, re, sqlite3, sys, threading, time, urllib.parse, wave
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-import core, audit, guard
+import core, audit, guard, photo_import
 import accounts as A
 
 HOST = os.environ.get('SK_HOST', '127.0.0.1')
@@ -18,7 +18,7 @@ EVAL = os.environ.get('SK_EVAL') == '1'
 SEC_HEADERS = {'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer',
                'Content-Security-Policy': "default-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none'",
                'Permissions-Policy': 'microphone=(self)'}
-IMPORTANT_TABLES = {'prices', 'hours', 'special_hours'}
+IMPORTANT_TABLES = {'prices', 'hours', 'special_hours', 'price_tiers'}
 
 class H(BaseHTTPRequestHandler):
     server_version = 'sekkyaku-proto'
@@ -90,7 +90,7 @@ class H(BaseHTTPRequestHandler):
             o = self._owner()
             if not o: return self._send(401, {'error': 'owner login required'})
             return self._send(200, {'events': audit.recent(o['store_id'], 100), 'chain_ok': audit.verify()[0]})
-        if p == '/api/staff/unanswered':   # 店員用：未回答の質問（読み取りのみ。個人情報マスク済み・30日で消去）
+        if p == '/api/staff/unanswered':   # 店員用：未回答の質問（読み取りのみ。個人情報マスク済み・90日で消去）
             a = self._acct()
             if not a: return self._send(401, {'error': 'login required'})
             with core.db() as c:
@@ -104,7 +104,15 @@ class H(BaseHTTPRequestHandler):
             d = core.store_data(sid)
             d['facts'] = core.facts_for(sid)
             d['conflicts'] = sorted(set(core.find_conflicts(d)[0].values()))
+            d['sources'] = core.row_sources(sid)   # 取り込みで入った行の出典URL・取得日（区切りD）
             return self._send(200, d)
+        if p in ('/api/admin/questions', '/api/admin/cards', '/api/admin/growth'):   # 区切りC：店長画面（読み取り）
+            o = self._owner()
+            if not o: return self._send(401, {'error': 'login required'})
+            sid = o['store_id']
+            if p == '/api/admin/questions': return self._send(200, core.question_groups(sid))
+            if p == '/api/admin/cards': return self._send(200, core.list_cards(sid))
+            return self._send(200, core.growth(sid))
         if p == '/api/admin/logs':
             o = self._owner()
             if not o: return self._send(401, {'error': 'login required'})
@@ -225,7 +233,8 @@ class H(BaseHTTPRequestHandler):
                 res = {'answer': core.FALLBACK['ja'], 'status': 'fallback', 'reason': 'empty', 'lang': 'ja', 'fact_ids': [],
                        'llm': {'model': '-', 'ms': 0, 'usage': {'in': 0, 'out': 0}, 'cost_usd': 0.0}}
             else:
-                res = core.answer_question(sid, q, now=now, model=(body.get('model') if EVAL else None), purpose=body.get('purpose') or 'kiosk_ask')
+                res = core.answer_turn(sid, q, session=(session or (f"owner-test-{(acct or {}).get('id')}" if kind == 'test' else '')), now=now,
+                                       model=(body.get('model') if EVAL else None), purpose=body.get('purpose') or 'kiosk_ask')
             timings['llm_ms'] = res['llm']['ms']; usage['llm_in'] = res['llm']['usage']['in']; usage['llm_out'] = res['llm']['usage']['out']
             usage['llm_model'] = res['llm']['model']; cost += res['llm']['cost_usd']
         except Exception as e:   # 事業者API障害など：誤回答せず定型文＋スタッフ案内。エラーとして計上
@@ -235,13 +244,16 @@ class H(BaseHTTPRequestHandler):
         timings['server_ask_ms'] = round((time.time() - t0) * 1000)
         mode = body.get('mode') if body.get('mode') in ('kiosk', 'test', 'eval') else 'kiosk'
         if kind == 'test': mode = 'test'
-        cid, tok = core.record_conversation(sid, mode, session, q, res, timings, usage, cost, (acct or {}).get('id'))
+        cid, tok = core.record_conversation(sid, mode, session, res.get('log_question') or q, res, timings, usage, cost, (acct or {}).get('id'))
+        if mode == 'kiosk' and res['status'] == 'answered' and os.environ.get('SK_AUDIT', '1') == '1':
+            # 別AIチェック：回答後に裏で実行（お客様への回答は待たせない・止めない）。怪しいものは店長画面の「要確認」へ
+            threading.Thread(target=core.audit_conversation, args=(sid, cid, q, res['answer']), daemon=True).start()
         yen = cost * guard.fx()
         guard.end_turn(tk, actual_yen=yen + guard.tts_est_yen(len(res['answer'])), actual_sec=usage.get('asr_sec', 0) + len(res['answer']) / 5,
                        error=err, question=q, status=res['status'] + ':' + res['reason'])
         return self._send(200, {'conv_id': cid, 'tts_token': tok, 'question': q, 'answer': res['answer'], 'status': res['status'],
                                 'reason': res['reason'], 'lang': res['lang'], 'fact_ids': res['fact_ids'], 'timings': timings, 'cost_usd': cost,
-                                'staff_call': res['status'] != 'answered'})
+                                'staff_call': res['status'] != 'answered', 'clarify': res.get('reason') == 'clarify'})
 
     def _tts(self, store_id, body):
         """サーバーが作った文だけ読み上げる（tts_token必須・1回限り・30秒で失効）。24kHz s16le をチャンク転送。"""
@@ -303,6 +315,58 @@ class H(BaseHTTPRequestHandler):
                 audit.log(c, 'change_saved', sid, owner['id'], f'via=form {table} {action} id={rid}')
             conflicts = sorted(set(core.find_conflicts(core.store_data(sid))[0].values()))
             return self._send(200, {'id': rid, 'conflicts': conflicts})
+        m = re.fullmatch(r'/api/admin/questions/(\d+)/(draft|answer|approve_draft|ok)', p)
+        if m:   # 区切りC：質問のまとまりへの店長対応
+            gid, act = int(m.group(1)), m.group(2)
+            if act == 'ok':
+                return self._send(200, {'ok': bool(core.group_ok(sid, gid, owner['id']))})
+            if act == 'approve_draft':   # AIを使わない（返答案の文をそのまま／店長が直した文で確認カードにする）
+                return self._send(200, core.propose_from_draft(sid, gid, body.get('reply'), body.get('topic'), owner['id']))
+            try: tk = guard.begin_turn(sid, 'owner', '', self._ip())
+            except guard.Denied as d: return self._denied_admin(d)
+            err = False; cost = 0.0
+            try:
+                if act == 'draft':
+                    r = core.draft_reply(sid, gid); cost = r.pop('cost_usd', 0.0)
+                else:   # 店長の短い答え（文字。音声はブラウザ標準の音声入力で文字にしてから送る）
+                    r = core.propose_owner_answer(sid, gid, str(body.get('text') or '')[:300], owner['id']); cost = (r.get('llm') or {}).get('cost_usd', 0.0)
+                    r['transcript'] = body.get('text')
+            except Exception:
+                err = True; raise
+            finally:
+                guard.end_turn(tk, actual_yen=cost * guard.fx(), error=err)
+            return self._send(200, r)
+        m = re.fullmatch(r'/api/admin/cards/([\w-]+)/reject', p)
+        if m:
+            return self._send(200, {'ok': bool(core.reject_card(sid, m.group(1), owner['id']))})
+        m = re.fullmatch(r'/api/admin/cards/([\w-]+)/narrow', p)
+        if m:   # 取り込みカードを項目ごとに選ぶ（チェックした項目だけ残す）。AIは使わない
+            try: return self._send(200, core.narrow_card(sid, m.group(1), body.get('keep') or [], owner['id']))
+            except ValueError as e: return self._send(400, {'error': str(e)})
+        if p == '/api/admin/photo':   # 区切りE：写真から取り込み → 確認カード（承認まで反映しない）
+            try: raw = base64.b64decode(str(body.get('image_b64') or '').split(',')[-1], validate=False)
+            except Exception: return self._send(400, {'error': '画像を読めませんでした'})
+            if not raw: return self._send(400, {'error': '写真がありません'})
+            try: tk = guard.begin_turn(sid, 'owner', '', self._ip())
+            except guard.Denied as d: return self._denied_admin(d)
+            err = False; cost = 0.0
+            try:
+                r = photo_import.propose_from_photo(sid, raw, body.get('filename') or 'photo.jpg', owner['id']); cost = r.get('cost_usd', 0.0)
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
+            except Exception:
+                err = True; raise
+            finally:
+                guard.end_turn(tk, actual_yen=cost * guard.fx(), error=err)
+            with core.db() as c: audit.log(c, 'change_proposed', sid, owner['id'], f"via=photo cards={len(r['cards'])} n={len(r['ops'])}")
+            return self._send(200, {k: r[k] for k in ('cards', 'confirm_text', 'conflicts', 'rejected_ops', 'n_items', 'excluded', 'cost_usd', 'usage', 'unchanged')} | {'n_ops': len(r['ops'])})
+        m = re.fullmatch(r'/api/admin/scheduled/(\d+)/cancel', p)
+        if m:
+            return self._send(200, {'ok': bool(core.cancel_scheduled(sid, int(m.group(1)), owner['id']))})
+        if p == '/api/admin/tiers/propose':   # 料金の区分の追加・編集 → 変更前→変更後の確認カード（承認まで反映しない・AIを使わない）
+            ops, bad = core.validate_ops(sid, [{'op': 'upsert_tier', 'name': body.get('name'), 'aliases': body.get('aliases') or ''}])
+            if bad: return self._send(400, {'error': '区分名を入れてください'})
+            return self._send(200, core.make_pending(sid, ops, account_id=owner['id'], kind='chat'))
         if p == '/api/admin/voice':
             audio = self._audio(body, 'owner') if body.get('audio_b64') else None
             try: tk = guard.begin_turn(sid, 'owner', '', self._ip())
@@ -313,7 +377,7 @@ class H(BaseHTTPRequestHandler):
                     text, ai = core.asr(audio[0], audio[1], 'ja', sid, 'owner_asr'); tr = ai; cost += ai['cost_usd']
                 else:
                     text = str(body.get('text') or '')[:1000]
-                r = core.owner_propose(sid, text, account_id=owner['id'])
+                r = core.owner_propose(sid, text, account_id=owner['id'], kind='voice' if audio else 'chat')
                 cost += r['llm']['cost_usd']
             except Exception:
                 err = True; raise
@@ -367,11 +431,16 @@ class H(BaseHTTPRequestHandler):
 def serve(host=HOST, port=PORT):
     core.init_db()
     core.purge()
+    core.apply_due_scheduled()
     def loop():
+        k = 0
         while True:
-            time.sleep(3600)
-            try: core.purge()
-            except Exception as e: sys.stderr.write(f'purge error {type(e).__name__}\n')
+            time.sleep(60); k += 1
+            try: core.apply_due_scheduled()   # 開始日が来た変更予約を反映（1分ごと）
+            except Exception as e: sys.stderr.write(f'schedule error {type(e).__name__}\n')
+            if k % 60 == 0:
+                try: core.purge()
+                except Exception as e: sys.stderr.write(f'purge error {type(e).__name__}\n')
     threading.Thread(target=loop, daemon=True).start()
     return ThreadingHTTPServer((host, port), H)
 

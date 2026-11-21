@@ -8,7 +8,15 @@ h2{font-size:16px;margin:0 0 8px}button{font-size:15px;padding:8px 12px;border-r
 button.pri{background:#16a34a;color:#fff;border:0}button.rec{background:#ef4444;color:#fff;border:0}
 input,select,textarea{font-size:15px;padding:6px;border:1px solid #cbd5e1;border-radius:6px;max-width:100%}
 table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid #e2e8f0;padding:4px;text-align:left;vertical-align:top}
-.tabs button{margin:2px}.hide{display:none}.muted{color:#64748b;font-size:12px}#confirm{background:#fef9c3;padding:10px;border-radius:8px;margin-top:8px}
+.tabs button{margin:2px}
+.qtabs button{border-radius:999px;margin:2px}.qtabs button.on{background:#0f172a;color:#fff;border-color:#0f172a}
+.qg{border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin:8px 0;background:#fff}.qg.unanswered{border-left:5px solid #ef4444}.qg.review{border-left:5px solid #f59e0b}.qg.answered{border-left:5px solid #22c55e}
+.qh{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.ic{font-size:20px}.cnt{background:#f1f5f9;border-radius:999px;padding:1px 8px;font-size:12px}.ai{background:#f8fafc;border-radius:8px;padding:6px 8px;margin-top:6px;font-size:14px}
+.badge{font-size:11px;border-radius:6px;padding:1px 6px;margin-left:4px}.b-warn{background:#fef3c7;color:#92400e}.b-red{background:#fee2e2;color:#991b1b}.b-ok{background:#dcfce7;color:#166534}
+.draft{background:#eff6ff;border-radius:8px;padding:8px;margin-top:8px}.chip{border-radius:999px;margin:2px;background:#fff}
+.card{background:#fef9c3;border-radius:10px;padding:10px;margin:8px 0}.card.must{background:#fee2e2}.diff td{font-size:13px}.diff .b{color:#64748b;text-decoration:line-through}.diff .a{color:#166534;font-weight:700}
+.grow{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end}.bars{display:flex;gap:3px;align-items:flex-end;height:60px}.bars div{width:14px;background:#60a5fa;border-radius:3px 3px 0 0}.bars div.z{background:#e2e8f0;height:2px!important}
+.big{font-size:26px;font-weight:700}.hide{display:none}.muted{color:#64748b;font-size:12px}#confirm{background:#fef9c3;padding:10px;border-radius:8px;margin-top:8px}
 </style></head><body>
 <header><b>店長モード</b><span id="who"></span></header>
 <section id="login">
@@ -19,9 +27,27 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
   <div id="lmsg" class="muted"></div>
 </section>
 <div id="app" class="hide">
-  <div class="tabs" style="margin:10px"><button onclick="tab('voice')">音声で登録</button><button onclick="tab('data')">店舗情報</button><button onclick="tab('test')">回答テスト</button><button onclick="tab('logs')">会話・未回答</button><button onclick="tab('hist')">変更履歴</button><button onclick="tab('acct')">アカウント・端末（課金）</button><button onclick="tab('usage')">利用状況・上限</button>
+  <div class="tabs" style="margin:10px"><button onclick="tab('q')"><b>お客様の質問</b></button><button onclick="tab('cards')"><b>確認カード</b> <span id="ncards" class="cnt">0</span></button><button onclick="tab('voice')">音声で登録</button><button onclick="tab('data')">店舗情報</button><button onclick="tab('test')">回答テスト</button><button onclick="tab('logs')">会話・未回答</button><button onclick="tab('hist')">変更履歴</button><button onclick="tab('acct')">アカウント・端末（課金）</button><button onclick="tab('usage')">利用状況・上限</button>
     <a id="kiosk" target="_blank" style="margin-left:8px">接客画面を開く</a> <button onclick="logout()">ログアウト</button></div>
-  <section id="t-voice"><h2>話して登録・変更</h2>
+  <section id="t-q"><div id="growth"></div></section>
+  <section id="t-q2"><h2>お客様の質問 <span class="muted" id="qupd"></span></h2>
+    <div class="muted">同じ内容の質問はまとめて件数で表示します。全部を確認する必要はありません。「未回答」と「要確認」だけ見てください（5秒ごとに自動更新）。</div>
+    <div class="qtabs" style="margin:8px 0"><button data-s="unanswered" onclick="qtab('unanswered')">未回答 <span id="c-unanswered">0</span></button><button data-s="review" onclick="qtab('review')">要確認 <span id="c-review">0</span></button><button data-s="answered" onclick="qtab('answered')">回答済み <span id="c-answered">0</span></button></div>
+    <div id="qhelp" class="muted"></div><div id="qlist"></div></section>
+  <section id="t-cards" class="hide"><h2>確認カード（承認するまでお客様への回答には使いません）</h2>
+    <div style="margin-bottom:8px">変更を伝える（例:「今日からハイボール700円」「12月1日から日曜も営業 18時〜23時」）<br>
+      <input id="chg" size="34" placeholder="文字で入力、または🎤"> <button id="chgmic" onclick="stt($('chg'), this)">🎤</button> <button class="pri" onclick="sendChange()">カードを作る</button>
+      <div class="muted">🎤 はブラウザ標準の音声入力（無料）です。話した内容は文字になって入力欄に入り、送る前に直せます。</div><div id="chgmsg" class="muted"></div></div>
+    <details style="margin-bottom:8px"><summary><b>料金の区分（二重価格）を追加・編集</b></summary>
+      <div class="muted">例：予約経路で料金が違う店。区分があると、料金を聞かれたときにAIが先に「どちらでのご予約ですか？」と1回だけ聞き返します。区分ごとの料金は「変更を伝える」欄で（例:「Klook経由のテーブル席Aプランは4,500円」）。</div>
+      区分名 <input id="tiername" size="16" placeholder="Japan Ticket/Klook"> お客様の言い方 <input id="tieral" size="22" placeholder="klook, ジャパンチケット"> <button class="pri" onclick="proposeTier()">確認カードを作る</button>
+      <div id="tiers" class="muted"></div></details>
+    <details style="margin-bottom:8px" id="photobox"><summary><b>📷 写真から取り込む（メニュー表・料金表・貼り紙）</b></summary>
+      <div class="muted">写真の文字をAIが読み取り、全部の項目を確認カードにします。<b>承認するまでお客様への回答には使いません。</b>営業時間・営業日・支払い方法は1件ずつ「要確認」になります。写真そのものは保存しません。</div>
+      <input type="file" id="photo" accept="image/*" capture="environment"> <button class="pri" onclick="sendPhoto()">読み取ってカードを作る</button>
+      <div id="photomsg" class="muted"></div></details>
+    <div id="cardlist"></div><h3 style="font-size:14px">開始日を待っている変更</h3><div id="schedlist" class="muted"></div></section>
+  <section id="t-voice" class="hide"><h2>話して登録・変更</h2>
     <div class="muted">例:「うちは60分3,000円、90分4,500円。営業時間は朝5時まで」</div>
     <button id="vrec" class="pri" onclick="voiceRec()">🎤 話す</button> または <input id="vtext" size="30" placeholder="文字でも可"> <button onclick="voiceText()">送る</button>
     <div id="vtr" class="muted"></div>
@@ -50,15 +76,15 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
 <script src="/static/common.js"></script>
 <script>
 const $ = id => document.getElementById(id); let ST = null, pending = null, opsHash = null;
-const COLS = { hours: ['weekday(0=月..6=日)', 'open', 'close', 'closed', 'note'], special_hours: ['date_from', 'date_to', 'open', 'close', 'closed', 'note'], prices: ['name', 'amount_yen', 'note', 'valid_from', 'valid_to', 'weekdays'], menu: ['name', 'price_yen', 'category', 'note'], payments: ['method'], faqs: ['topic', 'answer'] };
-const JA = { hours: '曜日別営業時間', special_hours: '臨時休業・特別営業', prices: '料金（期間限定は日付）', menu: 'メニュー', payments: '支払い方法', faqs: 'その他の案内' };
+const COLS = { hours: ['weekday(0=月..6=日)', 'open', 'close', 'closed', 'note', 'open2(2枠目の開店)', 'close2(2枠目の閉店)'], special_hours: ['date_from', 'date_to', 'open', 'close', 'closed', 'note'], prices: ['name', 'amount_yen', 'note', 'valid_from', 'valid_to', 'weekdays', 'tier(料金の区分。空＝全区分共通)'], menu: ['name', 'price_yen', 'category', 'note'], payments: ['method'], faqs: ['topic', 'answer'], profile: ['slot(一人客/女性一人/デート/子連れ/団体/誕生日・記念日/おすすめ/混む時間/外国語対応)', 'answer'], price_tiers: ['name', 'aliases(お客様の言い方。カンマ区切り)'] };
+const JA = { hours: '曜日別営業時間', special_hours: '臨時休業・特別営業', prices: '料金（期間限定は日付）', menu: 'メニュー', payments: '支払い方法', faqs: 'その他の案内', profile: '店のキャラ（一人客・デート・おすすめ等）', price_tiers: '料金の区分（二重価格：例 予約経路 Japan Ticket/Klook とそれ以外）' };
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function onAuth(j) { if (j.account.role !== 'owner') { SK.post('/api/logout', {}); $('lmsg').innerHTML = `店員アカウントです。店舗情報の変更はオーナーのみ。<a href="/k/${j.store.slug}">接客画面</a>はこの端末でログイン済みなら使えます（再ログインが必要な場合あり）。`; return; } start(j.store, j.account); }
 SK.authBox($('authbox'), { onDone: onAuth });
 async function createStore() { try { await SK.post('/api/stores', { name: $('nname').value, slug: $('nslug').value.trim(), category: $('ncat').value, owner_password: $('npw').value }); $('lmsg').textContent = '作成しました。店舗IDとパスワードでログインしてください'; } catch (e) { $('lmsg').textContent = e.message; } }
 async function logout() { await SK.post('/api/logout', {}); location.reload(); }
-function start(s, acct) { ST = s; $('login').classList.add('hide'); $('app').classList.remove('hide'); $('who').textContent = s.name + ' / ' + (acct ? acct.name : ''); $('kiosk').href = '/k/' + s.slug + '?debug=1'; load(); }
-function tab(t) { ['voice', 'data', 'test', 'logs', 'hist', 'acct', 'usage'].forEach(x => $('t-' + x).classList.toggle('hide', x !== t)); if (t === 'logs' || t === 'hist') loadLogs(); if (t === 'acct') loadAccts(); if (t === 'usage') loadUsage(); }
+function start(s, acct) { ST = s; $('login').classList.add('hide'); $('app').classList.remove('hide'); $('who').textContent = s.name + ' / ' + (acct ? acct.name : ''); $('kiosk').href = '/k/' + s.slug + '?debug=1'; load(); tab('q'); loadCardCount(); setInterval(poll, 5000); }
+function tab(t) { ['q', 'q2', 'cards', 'voice', 'data', 'test', 'logs', 'hist', 'acct', 'usage'].forEach(x => $('t-' + x).classList.toggle('hide', !(x === t || (t === 'q' && x === 'q2')))); CUR = t; if (t === 'q') loadQ(); if (t === 'cards') loadCards(); if (t === 'logs' || t === 'hist') loadLogs(); if (t === 'acct') loadAccts(); if (t === 'usage') loadUsage(); }
 const ST_JA = { active: '有効', suspended: '停止中', deleted: '削除済み' }, CS_JA = { unused: '未使用', used: '使用済み', expired: '期限切れ', revoked: '無効化' };
 async function loadAccts() {
   const d = await SK.get('/api/admin/accounts'), b = d.plan;
@@ -99,7 +125,7 @@ async function load() {
   $('tables').innerHTML = Object.keys(COLS).map(t => {
     const cols = COLS[t].map(c => c.split('(')[0]);
     return `<h3 style="font-size:14px">${JA[t]}</h3><table><tr>${COLS[t].map(c => `<th>${c}</th>`).join('')}<th>更新日</th><th></th></tr>` +
-      d[t].map(r => `<tr>${cols.map(c => `<td><input data-t="${t}" data-id="${r.id}" data-c="${c}" value="${esc(r[c])}" size="8"></td>`).join('')}<td class="muted">${esc(r.updated_at)}</td><td><button onclick="saveRow('${t}',${r.id})">保存</button><button onclick="delRow('${t}',${r.id})">削除</button></td></tr>`).join('') +
+      d[t].map(r => { const sr = (d.sources || {})[t + ':' + r.id]; return `<tr>${cols.map(c => `<td><input data-t="${t}" data-id="${r.id}" data-c="${c}" value="${esc(r[c])}" size="8"></td>`).join('')}<td class="muted">${esc(r.updated_at)}${sr ? '<br>出典 ' + esc(sr.url) + '（' + esc((sr.fetched_at || '').slice(0, 10)) + ' 取得）' : ''}</td><td><button onclick="saveRow('${t}',${r.id})">保存</button><button onclick="delRow('${t}',${r.id})">削除</button></td></tr>`; }).join('') +
       `<tr>${cols.map(c => `<td><input data-t="${t}" data-id="new" data-c="${c}" size="8"></td>`).join('')}<td></td><td><button onclick="saveRow('${t}','new')">追加</button></td></tr></table>`;
   }).join('');
   $('tables').insertAdjacentHTML('afterbegin', CONFLICTS.length ? `<div style="background:#fee2e2;padding:8px;border-radius:8px;margin-bottom:8px"><b>登録内容に食い違いがあります（接客AIはこの項目を案内せず「スタッフにご確認ください」と答えます）</b><br>${CONFLICTS.map(esc).join('<br>')}</div>` : '');
@@ -128,6 +154,121 @@ async function loadLogs() {
   $('convs').innerHTML = '<table><tr><th>日時</th><th>種別</th><th>未回答の質問（個人情報除去済・30日で自動消去）</th><th>状態</th><th>遅延</th></tr>' + d.conversations.map(c => { const t = JSON.parse(c.timings_json || '{}'); return `<tr style="${c.status.startsWith('answered') ? '' : 'background:#fee2e2'}"><td>${c.ts}</td><td>${c.mode}</td><td>${esc(c.question)}</td><td>${esc(c.status)}</td><td>${t.first_audio_ms || t.server_ask_ms || ''}ms</td></tr>`; }).join('') + '</table>';
   $('hist').innerHTML = '<table><tr><th>日時</th><th>経路</th><th>操作</th><th>前</th><th>後</th></tr>' + d.history.map(h => `<tr><td>${h.ts}</td><td>${h.source}</td><td>${h.table_name} ${h.action}</td><td class="muted">${esc(h.before_json)}</td><td class="muted">${esc(h.after_json)}</td></tr>`).join('') + '</table>';
   const a = await SK.get('/api/admin/audit'); $('audit').innerHTML = `連鎖検証: ${a.chain_ok ? '正常' : '<b style="color:#dc2626">異常（改ざんの疑い）</b>'}<br>` + a.events.map(e => `${e.ts} #${e.account_id ?? '-'} ${esc(e.event)} ${esc(e.detail)}`).join('<br>');
+}
+// ================= 区切りC：お客様の質問・確認カード・成長カード =================
+let CUR = 'q', QS = 'unanswered', QDATA = null, OPEN = {};
+const ST_TXT = { unanswered: '未回答', review: '要確認', answered: '回答済み' };
+const HELP = { unanswered: 'AIが答えられなかった質問です。「返答案」を開いて、選ぶ・ひとこと答える・話すのどれかで答えてください。承認すると、次のお客様から答えられるようになります（過去の回答は変わりません）。', review: 'AIが一部だけ答えた、または別のAIのチェックで「登録にない言い切り」の疑いがある質問です。AIの回答で良ければ「このままでOK」、違えば直してください。', answered: '見るだけで大丈夫です。件数と品質（一部回答・注意の数）を表示しています。' };
+function poll() { if (CUR === 'q' && !(document.activeElement && document.activeElement.closest && document.activeElement.closest('#qlist'))) loadQ(); loadCardCount(); }
+function qtab(s) { QS = s; renderQ(); }
+async function loadQ() {
+  try { QDATA = await SK.get('/api/admin/questions'); } catch (e) { return; }
+  ['unanswered', 'review', 'answered'].forEach(k => $('c-' + k).textContent = QDATA.counts[k]);
+  $('qupd').textContent = '更新 ' + new Date().toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo' }); renderQ(); loadGrowth();
+}
+function renderQ() {
+  document.querySelectorAll('.qtabs button').forEach(b => b.classList.toggle('on', b.dataset.s === QS)); $('qhelp').textContent = HELP[QS];
+  const gs = (QDATA ? QDATA.groups : []).filter(g => g.state === QS);
+  $('qlist').innerHTML = gs.length ? gs.map(qCard).join('') : `<div class="muted" style="padding:12px">${QS === 'answered' ? 'まだありません' : 'ありません。対応が必要な質問はありません 🎉'}</div>`;
+}
+function qCard(g) {
+  const L = g.latest || {}, au = L.audit || {}, warn = [...(au.unsupported || []), ...(au.contradiction || [])];
+  const badges = (g.n_partial ? `<span class="badge b-warn">一部だけ回答 ${g.n_partial}</span>` : '') + (g.n_flagged ? `<span class="badge b-red">AIチェック注意 ${g.n_flagged}</span>` : '') + (g.resolved_at ? `<span class="badge b-ok">店長対応済み</span>` : '') + (g.kind === 'owner_q' ? `<span class="badge b-red">店長への質問</span>` : '');
+  let h = `<div class="qg ${g.state}" id="g${g.id}"><div class="qh"><span class="ic" title="${esc(g.category)}">${g.icon}</span><b>${esc(g.sample)}</b><span class="cnt">${g.n}件</span><span class="muted">${esc(g.category)}・最新 ${esc((g.last_ts || '').slice(5, 16))}</span>${badges}</div>`;
+  if (g.kind === 'owner_q') h += `<div class="ai">料金の区分ごとの金額が登録されていません。AIは金額を作らず「スタッフにご確認ください」と答えています。「返答案」から金額を入れてください（承認後に反映）。</div>`; else
+  h += `<div class="ai"><span class="muted">AIの回答：</span>${esc(L.answer || '（記録なし）')}${warn.length ? `<div style="color:#b45309;font-size:12px;margin-top:4px">⚠ 登録にない言い切りの疑い：${warn.map(esc).join(' / ')}</div>` : ''}</div>`;
+  if (g.state !== 'answered') {
+    h += `<div style="margin-top:6px"><button onclick="openDraft(${g.id})">✍ 返答案</button> ${g.state === 'review' ? `<button class="pri" onclick="qok(${g.id})">このままでOK</button>` : ''}</div>`;
+    h += `<div id="d${g.id}">${OPEN[g.id] ? draftBox(g.id, OPEN[g.id]) : ''}</div>`;
+  } else {
+    h += `<div class="muted" style="margin-top:4px">回答 ${g.n_answered}/${g.n}件</div>`;
+  }
+  return h + `<div id="cd${g.id}"></div></div>`;
+}
+function draftBox(id, d) {
+  return `<div class="draft"><div class="muted">AIの返答案（登録情報から作成${d.known ? '' : '。［　］は店長が埋める所'}）</div>
+    <textarea id="dr${id}" rows="2" style="width:100%">${esc(d.reply)}</textarea>
+    ${(d.choices || []).length ? '<div>タップで選ぶ：' + d.choices.map(c => `<button class="chip" onclick="fillChoice(${id}, '${esc(c).replace(/'/g, '')}')">${esc(c)}</button>`).join('') + '</div>' : ''}
+    <div style="margin-top:4px">見出し <input id="dt${id}" value="${esc(d.topic)}" size="8"> <button class="pri" onclick="useDraft(${id})">この文で確認カードへ</button></div>
+    <div style="margin-top:6px">または ひとことで答える <input id="oa${id}" size="20" placeholder="例: ないです／近くにコインパーキング"> <button onclick="stt($('oa${id}'), this)">🎤</button> <button onclick="ownerAnswer(${id})">AIに返答文へ整えてもらう</button></div>
+    <div class="muted">🎤 はブラウザ標準の音声入力（無料）。文字になったものを確認してから送れます。</div></div>`;
+}
+async function openDraft(id) {
+  const box = $('d' + id); box.innerHTML = '<div class="muted">返答案を作っています…</div>';
+  try { const g = QDATA.groups.find(x => x.id === id); const d = g && g.draft ? g.draft : await SK.post(`/api/admin/questions/${id}/draft`, {}); OPEN[id] = d; box.innerHTML = draftBox(id, d); } catch (e) { box.innerHTML = `<span style="color:#b91c1c">${esc(e.message)}</span>`; }
+}
+function fillChoice(id, c) { const t = $('dr' + id); t.value = t.value.includes('［') ? t.value.replace(/［[^］]*］/, c) : t.value; if (!t.value.includes(c)) $('oa' + id).value = c; }
+async function useDraft(id) { try { showCard($('cd' + id), await SK.post(`/api/admin/questions/${id}/approve_draft`, { reply: $('dr' + id).value, topic: $('dt' + id).value })); } catch (e) { alert(e.message); } }
+async function ownerAnswer(id) { const t = $('oa' + id).value.trim(); if (!t) return; $('cd' + id).innerHTML = '<div class="muted">整えています…</div>'; try { showCard($('cd' + id), await SK.post(`/api/admin/questions/${id}/answer`, { text: t })); } catch (e) { $('cd' + id).innerHTML = esc(e.message); } }
+async function qok(id) { await SK.post(`/api/admin/questions/${id}/ok`, {}); delete OPEN[id]; loadQ(); }
+// 確認カード（変更前→変更後・開始日・重要な変更はパスワード）
+function cardHtml(c) {
+  const must = (c.must_confirm || []).length, MJ = { set_hours: '営業時間・営業日', set_special_hours: '営業日（臨時）', add_payment: '支払い方法', remove_payment: '支払い方法' };
+  const KJ = { voice: '音声での変更', chat: '文字での変更', answer: '質問への回答', web: 'Webから取り込み', web_must: 'Webから取り込み（要確認）', photo: '写真から取り込み', photo_must: '写真から取り込み（要確認）' };
+  const pick = (c.items || []).length > 1 ? `<details style="margin-top:6px"><summary>項目ごとに選ぶ（${c.items.length}件）</summary>${c.items.map(it => `<label style="display:block"><input type="checkbox" data-card="${c.pending_id}" value="${it.i}" checked> ${esc(it.text)}${it.src ? ' <span class="muted">出典 ' + esc(it.src) + '</span>' : ''}</label>`).join('')}<button onclick="narrowCard('${c.pending_id}')">チェックした項目だけ残す</button> <span class="muted">（残した項目は新しいカードになり、もう一度承認が必要です）</span></details>` : '';
+  return `<div class="card ${must ? 'must' : ''}" id="card-${c.pending_id}"><b>${must ? '要確認：' + [...new Set(c.must_confirm.map(m => MJ[m]))].join('・') : '確認'}</b> <span class="muted">${KJ[c.kind] || c.kind}${c.source && c.source.url ? '・出典 ' + esc(c.source.url) + '（' + esc((c.source.fetched_at || '').slice(0, 16)) + ' 取得）' : ''}</span>
+    <table class="diff" style="margin-top:6px"><tr><th>項目</th><th>変更前</th><th></th><th>変更後</th></tr>${(c.diff || []).map(d => `<tr><td>${esc(d.item)}</td><td class="b">${esc(d.before)}</td><td>→</td><td class="a">${esc(d.after)}</td></tr>`).join('') || '<tr><td colspan=4 class="muted">（変更なし）</td></tr>'}</table>
+    ${pick}<div style="margin-top:4px">反映：<b>${c.effective_from ? esc(c.effective_from) + ' から' : '承認したらすぐ（次のお客様から）'}</b></div>
+    ${c.warnings && c.warnings.length ? `<div style="color:#b45309">⚠ ${c.warnings.map(esc).join(' / ')}</div>` : ''}
+    <div style="margin-top:6px">${c.important ? `パスワード <input type="password" size="12" id="pw-${c.pending_id}" autocomplete="current-password"> ` : ''}<button class="pri" onclick="approveCard('${c.pending_id}','${c.ops_hash}')">承認して保存</button> <button onclick="rejectCard('${c.pending_id}')">取り消し</button></div>
+    ${c.important ? '<div class="muted">料金・営業時間・支払い方法などの重要な変更は、パスワードの入力が必要です。</div>' : ''}<div id="cm-${c.pending_id}"></div></div>`;
+}
+function showCard(el, c) { if (!c.pending_id) { el.innerHTML = `<div class="muted">登録できる内容が見つかりませんでした。${esc((c.unclear || []).join('、'))}</div>`; return; } el.innerHTML = cardHtml(c); loadCardCount(); }
+async function approveCard(pid, h) {
+  const pw = $('pw-' + pid); try { const r = await SK.post('/api/admin/approve', { pending_id: pid, ops_hash: h, password: pw ? pw.value : undefined });
+    $('cm-' + pid).innerHTML = `<b style="color:#166534">${esc(r.message)}</b>`; setTimeout(() => { loadQ(); if (CUR === 'cards') loadCards(); load(); }, 900); } catch (e) { $('cm-' + pid).innerHTML = `<span style="color:#b91c1c">${esc(e.message)}</span>`; }
+}
+async function rejectCard(pid) { await SK.post(`/api/admin/cards/${pid}/reject`, {}); const el = $('card-' + pid); if (el) el.remove(); loadCardCount(); }
+async function loadCardCount() { try { const d = await SK.get('/api/admin/cards'); $('ncards').textContent = d.cards.length; return d; } catch (e) {} }
+async function loadCards() {
+  const d = await loadCardCount(); if (!d) return;
+  $('cardlist').innerHTML = d.cards.length ? d.cards.map(cardHtml).join('') : '<div class="muted">承認待ちのカードはありません。</div>';
+  try { const st = await SK.get('/api/admin/store'); $('tiers').innerHTML = st.price_tiers.length ? '登録済み：' + st.price_tiers.map(t => `<b>${esc(t.name)}</b>（${esc(t.aliases || '')}）・区分付きの料金 ${st.prices.filter(p => p.tier === t.name).length}件`).join('／') + '<br>編集は同じ区分名で作り直すと「変更前→変更後」カードになります。削除は「店舗情報」タブから。' : '登録済みの区分はありません（二重価格のない店はこのままで大丈夫です）。'; } catch (e) {}
+  $('schedlist').innerHTML = d.scheduled.length ? d.scheduled.map(x => `${esc(x.effective_date)} から：${esc(x.summary.replace('登録内容を確認します。', '').replace(/保存してよろしいですか？/, ''))} <button onclick="cancelSched(${x.id})">予約を取り消す</button>`).join('<br>') : '（なし）';
+}
+async function sendPhoto() {
+  const f = $('photo').files[0]; if (!f) { $('photomsg').textContent = '写真を選んでください。'; return; }
+  $('photomsg').textContent = '読み取っています…（10〜20秒）';
+  try {
+    const img = await createImageBitmap(f), k = Math.min(1, 1600 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+    cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    const b64 = cv.toDataURL('image/jpeg', 0.85);
+    const r = await SK.post('/api/admin/photo', { image_b64: b64, filename: f.name });
+    $('photomsg').innerHTML = `読み取った項目 ${r.n_items}件 → 確認カード ${r.cards.length}枚（登録案 ${r.n_ops}件）。` + (r.excluded.length ? `<br>根拠が確かめられず除外：${r.excluded.map(x => esc(x.name || x.kind) + '（' + esc(x.flags.join('・')) + '）').join('、')}` : '') +
+      (r.unchanged && r.unchanged.length ? `<br>登録済みと同じなのでカードにしなかった項目：${r.unchanged.map(esc).join('、')}` : '') + (r.conflicts && r.conflicts.length ? `<br><b style="color:#b45309">食い違い・読めない箇所：</b>${r.conflicts.map(esc).join(' / ')}` : '');
+    $('photo').value = ''; loadCards();
+  } catch (e) { $('photomsg').textContent = e.message; }
+}
+async function narrowCard(pid) {
+  const keep = [...document.querySelectorAll(`input[data-card="${pid}"]:checked`)].map(x => +x.value);
+  try { await SK.post(`/api/admin/cards/${pid}/narrow`, { keep }); loadCards(); } catch (e) { alert(e.message); }
+}
+async function proposeTier() { try { const r = await SK.post('/api/admin/tiers/propose', { name: $('tiername').value, aliases: $('tieral').value }); $('tiername').value = ''; $('tieral').value = ''; loadCards(); } catch (e) { alert(e.message); } }
+async function cancelSched(id) { await SK.post(`/api/admin/scheduled/${id}/cancel`, {}); loadCards(); }
+async function sendChange() { const t = $('chg').value.trim(); if (!t) return; $('chgmsg').textContent = 'カードを作っています…'; try { const r = await SK.post('/api/admin/voice', { text: t }); $('chgmsg').textContent = r.pending_id ? '下にカードを作りました。内容を確認して承認してください。' : '登録できる内容が見つかりませんでした。'; $('chg').value = ''; loadCards(); } catch (e) { $('chgmsg').textContent = e.message; } }
+// ブラウザ標準の音声入力（Web Speech API・無料）。対応していないブラウザでは文字入力だけ
+function stt(input, btn) {
+  const R = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!R) { alert('このブラウザは標準の音声入力に対応していません。文字で入力してください。'); return; }
+  const r = new R(); r.lang = 'ja-JP'; r.interimResults = true; const before = input.value;
+  r.onresult = e => { input.value = (before ? before + ' ' : '') + [...e.results].map(x => x[0].transcript).join(''); };
+  r.onend = () => { btn.textContent = '🎤'; }; r.onerror = e => { btn.textContent = '🎤'; if (e.error !== 'no-speech') alert('音声入力: ' + e.error); };
+  btn.textContent = '● 聞いています'; r.start();
+}
+// 成長カード（実数のみ）
+async function loadGrowth() {
+  let g; try { g = await SK.get('/api/admin/growth'); } catch (e) { return; }
+  const s = g.series, mx = Math.max(1, ...s.map(x => Math.max(x.owner_handled + x.owner_changes, x.needs_owner))), t = s[s.length - 1], tr = g.trend, ct = g.counts || {}, mg = g.merges || {};
+  const bars = (key, color) => '<div class="bars">' + s.map(x => { const v = typeof key === 'function' ? key(x) : x[key]; return `<div class="${v ? '' : 'z'}" title="${x.day} ${v}件" style="height:${Math.round(v / mx * 60)}px;background:${color}"></div>`; }).join('') + '</div>';
+  const pct = v => v == null ? '—' : Math.round(v * 100) + '%';
+  const chg = v => v == null ? '' : (v <= 0 ? `<b style="color:#166534">${Math.round(-v * 100)}%減</b>` : `<b style="color:#b45309">${Math.round(v * 100)}%増</b>`);
+  $('growth').innerHTML = `<h2>成長カード <span class="muted">過去14日・実数（推計なし）</span></h2><div class="grow">
+    <div><div class="muted">この7日の回答率</div><div class="big">${pct(tr.cur.answer_rate)}</div><div class="muted">初期値 ${pct(g.baseline.answer_rate)}${tr.answer_rate_vs_baseline == null ? '' : '（' + (tr.answer_rate_vs_baseline >= 0 ? '+' : '') + Math.round(tr.answer_rate_vs_baseline * 100) + 'ポイント）'}<br>前の7日 ${pct(tr.prev.answer_rate)}</div></div>
+    <div><div class="muted">店長の手間（対応が必要になった質問・日別）</div>${bars('needs_owner', '#f59e0b')}<div class="muted">前の7日 ${tr.prev.needs_owner}件 → この7日 ${tr.cur.needs_owner}件 ${chg(tr.needs_owner_change)}</div></div>
+    <div><div class="muted">店長が対応した件数（回答＋変更・日別）</div>${bars(x => x.owner_handled + x.owner_changes, '#60a5fa')}<div class="muted">前の7日 ${tr.prev.owner_work}件 → この7日 ${tr.cur.owner_work}件 ${chg(tr.owner_work_change)}</div></div>
+    <div><div class="muted">いまの質問（まとめた件数）</div><div><span class="badge b-red">未回答 ${ct.unanswered || 0}</span><span class="badge b-warn">要確認 ${ct.review || 0}</span><span class="badge b-ok">回答済み ${ct.answered || 0}</span></div>
+      <div class="muted" style="margin-top:6px">同じ内容の質問をまとめました：${mg.questions || 0}件 → ${mg.groups || 0}まとまり（${mg.merged || 0}件を統合）</div></div></div>
+    <div class="muted" style="margin-top:6px">${esc(g.baseline.note)}</div>`;
 }
 SK.get('/api/me').then(j => j.account.role === 'owner' && start(j.store, j.account)).catch(() => {});
 </script></body></html>
